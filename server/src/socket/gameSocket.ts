@@ -254,16 +254,14 @@ function serializeGameState(state: any) {
   return {
     id: state.id,
     phase: state.phase,
-    turnNumber: state.turnNumber,
-    currentTurn: state.currentTurn,
     map: {
       radius: state.map.radius,
-      cells: Array.from(state.map.cells.entries()).map(([key, cell]) => ({
+      cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
         key,
         ...cell,
       })),
     },
-    players: Array.from(state.players.entries()).map(([key, player]) =>
+    players: Array.from(state.players.entries() as IterableIterator<[any, any]>).map(([key, player]) =>
       serializePlayer(player)
     ),
   };

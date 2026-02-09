@@ -32,7 +32,7 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
   const hexCell = map?.cells
     ? Array.isArray(map.cells)
       ? map.cells.find((c: any) => c.key === hexKey)
-      : map.cells.get?.(hexKey)
+      : (map.cells as Map<string, any>).get(hexKey)
     : null;
 
   // Найти всех игроков в выбранном гексе

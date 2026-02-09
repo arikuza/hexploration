@@ -13,7 +13,6 @@ export const CombatView: React.FC = () => {
   const combatResult = useAppSelector((state) => state.combat.combatResult);
   const currentPlayer = useAppSelector((state) => state.player.currentPlayer);
   const combatRef = useRef(combat);
-  const [keys, setKeys] = useState<Set<string>>(new Set());
   const keysRef = useRef<Set<string>>(new Set());
   const [shipSprites, setShipSprites] = useState<Map<number, HTMLImageElement>>(new Map());
 
@@ -58,13 +57,11 @@ export const CombatView: React.FC = () => {
       
       const key = e.key.toLowerCase();
       keysRef.current.add(key);
-      setKeys(new Set(keysRef.current));
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
       keysRef.current.delete(key);
-      setKeys(new Set(keysRef.current));
     };
 
     window.addEventListener('keydown', handleKeyDown);

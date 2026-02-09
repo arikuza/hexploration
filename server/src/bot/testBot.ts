@@ -173,7 +173,9 @@ class GameBot {
       clearInterval(combatInterval);
       this.socket?.off('combat:ended', onCombatEnd);
     };
-    this.socket.on('combat:ended', onCombatEnd);
+    if (this.socket) {
+      this.socket.on('combat:ended', onCombatEnd);
+    }
   }
 
   stop() {

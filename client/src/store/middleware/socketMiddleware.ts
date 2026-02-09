@@ -1,6 +1,6 @@
 import { Middleware } from '@reduxjs/toolkit';
 import { socketService } from '../../services/socketService';
-import { setGameState, updateGameState, setConnected } from '../slices/gameSlice';
+import { setGameState, setConnected } from '../slices/gameSlice';
 import {
   setCurrentPlayer,
   setPlayers,
@@ -9,7 +9,7 @@ import {
   updatePlayerPosition,
   updatePlayerTimers,
 } from '../slices/playerSlice';
-import { startCombat, updateCombat, setCombatResult, endCombat } from '../slices/combatSlice';
+import { startCombat, updateCombat, setCombatResult } from '../slices/combatSlice';
 import { SocketEvent } from '@hexploration/shared';
 
 let listenersInitialized = false;
@@ -113,7 +113,7 @@ export const setupSocketListeners = (store: any) => {
   });
 };
 
-export const socketMiddleware: Middleware = (store) => {
+export const socketMiddleware: Middleware = (_store) => {
   // Middleware просто передает actions дальше
   return (next) => (action) => {
     return next(action);

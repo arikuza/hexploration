@@ -22,8 +22,6 @@ router.get('/state', (req, res) => {
         key,
         ...player,
       })),
-      currentTurn: state.currentTurn,
-      turnNumber: state.turnNumber,
       phase: state.phase,
     });
   } catch (error) {

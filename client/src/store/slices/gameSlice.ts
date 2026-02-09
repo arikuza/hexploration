@@ -27,7 +27,7 @@ const gameSlice = createSlice({
       state.phase = action.payload.phase;
       state.map = action.payload.map;
     },
-    updateGameState: (state, action: PayloadAction<any>) => {
+    updateGameState: (_state, _action: PayloadAction<any>) => {
       // Обновления игрового состояния (если понадобятся)
     },
     setConnected: (state, action: PayloadAction<boolean>) => {
