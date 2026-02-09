@@ -1,7 +1,9 @@
 import axios from 'axios';
 
+// In production, use the same domain (empty VITE_API_URL)
+// In development, use localhost
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:3050';
-const API_URL = `${API_BASE}/api`;
+const API_URL = API_BASE ? `${API_BASE}/api` : '/api';
 
 const api = axios.create({
   baseURL: API_URL,

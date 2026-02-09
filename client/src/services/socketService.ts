@@ -1,6 +1,8 @@
 import { io, Socket } from 'socket.io-client';
 import { SocketEvent, HexCoordinates } from '@hexploration/shared';
 
+// In production, use the same domain (empty VITE_WS_URL)
+// In development, use localhost
 const SERVER_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3050';
 
 class SocketService {
