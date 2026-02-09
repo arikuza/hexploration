@@ -1,0 +1,123 @@
+import { Player } from './player.types.js';
+import { HexMap } from './hex.types.js';
+
+/**
+ * Состояние игры
+ */
+export interface GameState {
+  id: string;
+  map: HexMap;
+  players: Map<string, Player>;
+  phase: GamePhase;
+}
+
+/**
+ * Фазы игры
+ */
+export enum GamePhase {
+  LOBBY = 'lobby',           // Лобби (ожидание игроков)
+  EXPLORATION = 'exploration', // Исследование карты
+  COMBAT = 'combat',         // Боевая фаза
+  ENDED = 'ended',           // Игра завершена
+}
+
+/**
+ * Состояние боя
+ */
+export interface CombatState {
+  id: string;
+  participants: string[];    // ID игроков в бою
+  ships: CombatShip[];
+  projectiles: Projectile[];
+  arena: CombatArena;
+  startTime: number;
+  duration: number;
+}
+
+/**
+ * Корабль в бою
+ */
+export interface CombatShip {
+  playerId: string;
+  position: Vector2D;
+  velocity: Vector2D;
+  rotation: number;          // Радианы
+  angularVelocity: number;
+  health: number;
+  energy: number;
+  weaponCooldowns: Map<string, number>;
+}
+
+/**
+ * Снаряд
+ */
+export interface Projectile {
+  id: string;
+  weaponId: string;
+  ownerId: string;
+  position: Vector2D;
+  velocity: Vector2D;
+  damage: number;
+  lifetime: number;
+}
+
+/**
+ * Арена боя
+ */
+export interface CombatArena {
+  width: number;
+  height: number;
+  boundaries: 'wrap' | 'bounce'; // Поведение на границах
+}
+
+/**
+ * 2D вектор
+ */
+export interface Vector2D {
+  x: number;
+  y: number;
+}
+
+/**
+ * Действия бота в бою
+ */
+export interface BotActions {
+  thrust: number;
+  turn: number;
+  fire: boolean;
+  weaponId?: string;
+}
+
+/**
+ * События Socket.io
+ */
+export enum SocketEvent {
+  // Подключение
+  CONNECT = 'connect',
+  DISCONNECT = 'disconnect',
+  
+  // Аутентификация
+  AUTH = 'auth',
+  AUTH_SUCCESS = 'auth:success',
+  AUTH_ERROR = 'auth:error',
+  
+  // Игра
+  GAME_STATE = 'game:state',
+  GAME_UPDATE = 'game:update',
+  
+  // Ходы
+  MOVE = 'move',
+  MOVE_SUCCESS = 'move:success',
+  MOVE_ERROR = 'move:error',
+  
+  // Бой
+  COMBAT_START = 'combat:start',
+  COMBAT_UPDATE = 'combat:update',
+  COMBAT_END = 'combat:end',
+  COMBAT_ACTION = 'combat:action',
+  
+  // Игроки
+  PLAYER_JOIN = 'player:join',
+  PLAYER_LEAVE = 'player:leave',
+  PLAYERS_LIST = 'players:list',
+}

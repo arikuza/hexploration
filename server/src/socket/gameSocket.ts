@@ -1,0 +1,288 @@
+import { Server, Socket } from 'socket.io';
+import jwt from 'jsonwebtoken';
+import { gameWorld } from '../game/GameWorld';
+import { SocketEvent, HexCoordinates } from '@hexploration/shared';
+
+interface AuthToken {
+  userId: string;
+  username: string;
+}
+
+/**
+ * Настройка Socket.io для игры
+ */
+export function setupGameSocket(io: Server): void {
+  // Передать io в gameWorld для отправки обновлений таймеров
+  gameWorld.setIo(io);
+
+  // Middleware для аутентификации
+  io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    
+    if (!token) {
+      return next(new Error('Токен не предоставлен'));
+    }
+
+    try {
+      const decoded = jwt.verify(
+        token,
+        process.env.JWT_SECRET || 'default-secret'
+      ) as AuthToken;
+      
+      socket.data.userId = decoded.userId;
+      socket.data.username = decoded.username;
+      next();
+    } catch (error) {
+      next(new Error('Недействительный токен'));
+    }
+  });
+
+  io.on('connection', (socket: Socket) => {
+    console.log(`✅ Игрок подключился: ${socket.data.username} (${socket.data.userId})`);
+
+    // Добавить игрока в игру
+    const player = gameWorld.addPlayer(socket.data.userId, socket.data.username);
+
+    // Отправить успешную аутентификацию
+    socket.emit(SocketEvent.AUTH_SUCCESS, { player });
+
+    // Отправить текущее состояние игры
+    const state = gameWorld.getState();
+    socket.emit(SocketEvent.GAME_STATE, serializeGameState(state));
+
+    // Уведомить всех о новом игроке
+    socket.broadcast.emit(SocketEvent.PLAYER_JOIN, {
+      player: serializePlayer(player),
+    });
+
+    // Отправить список игроков
+    socket.emit(SocketEvent.PLAYERS_LIST, {
+      players: gameWorld.getOnlinePlayers().map(serializePlayer),
+    });
+
+    /**
+     * Движение игрока
+     */
+    socket.on(SocketEvent.MOVE, (data: { target: HexCoordinates }) => {
+      const success = gameWorld.movePlayer(socket.data.userId, data.target);
+
+      if (success) {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        socket.emit(SocketEvent.MOVE_SUCCESS, { 
+          position: player?.position,
+          moveTimer: player?.moveTimer,
+          canMove: player?.canMove,
+        });
+
+        // Уведомить всех об обновлении
+        io.emit(SocketEvent.GAME_UPDATE, {
+          type: 'player_moved',
+          playerId: socket.data.userId,
+          position: player?.position,
+          moveTimer: player?.moveTimer,
+          canMove: player?.canMove,
+        });
+      } else {
+        socket.emit(SocketEvent.MOVE_ERROR, { message: 'Невозможно переместиться (таймер или расстояние)' });
+      }
+    });
+
+    /**
+     * Начать бой
+     */
+    socket.on('combat:start', (data: { targetPlayerId: string }) => {
+      console.log(`⚔️ ${socket.data.username} атакует ${data.targetPlayerId}`);
+      
+      const attacker = gameWorld.getPlayer(socket.data.userId);
+      const target = gameWorld.getPlayer(data.targetPlayerId);
+      
+      if (!attacker || !target) {
+        socket.emit('combat:error', { message: 'Игрок не найден' });
+        return;
+      }
+
+      // Начать бой
+      const combatSystem = gameWorld.getCombatSystem();
+      const combat = combatSystem.startCombat([attacker, target]);
+
+      // Уведомить обоих игроков
+      const attackerSocket = Array.from(io.sockets.sockets.values()).find(s => s.data.userId === socket.data.userId);
+      const targetSocket = Array.from(io.sockets.sockets.values()).find(s => s.data.userId === data.targetPlayerId);
+
+      if (attackerSocket) attackerSocket.emit('combat:started', { combat });
+      if (targetSocket) targetSocket.emit('combat:started', { combat });
+      
+      console.log(`⚔️ Бой начат: ${combat.id}`);
+
+      // Обновлять бой каждые 16ms (~60 FPS)
+      const updateInterval = setInterval(() => {
+        const updatedCombat = combatSystem.updateCombat(combat.id, 0.016);
+        
+        if (!updatedCombat) {
+          clearInterval(updateInterval);
+          return;
+        }
+
+        // Отправить обновление обоим игрокам
+        if (attackerSocket) attackerSocket.emit('combat:update', { combat: updatedCombat });
+        if (targetSocket) targetSocket.emit('combat:update', { combat: updatedCombat });
+
+        // Проверить окончание боя
+        const allShipsDead = updatedCombat.ships.filter(s => s.health > 0).length <= 1;
+        if (allShipsDead || Date.now() - updatedCombat.startTime > updatedCombat.duration) {
+          const winner = updatedCombat.ships.find(s => s.health > 0);
+          
+          if (attackerSocket) attackerSocket.emit('combat:ended', { winner: winner?.playerId, combat: updatedCombat });
+          if (targetSocket) targetSocket.emit('combat:ended', { winner: winner?.playerId, combat: updatedCombat });
+
+          combatSystem.endCombat(combat.id);
+          clearInterval(updateInterval);
+          console.log(`⚔️ Бой завершен: ${combat.id}, победитель: ${winner?.playerId}`);
+        }
+      }, 16);
+    });
+
+    /**
+     * Начать бой с ботом
+     */
+    socket.on('combat:start:bot', () => {
+      console.log(`🤖 ${socket.data.username} начинает бой с ботом`);
+      
+      const player = gameWorld.getPlayer(socket.data.userId);
+      
+      if (!player) {
+        socket.emit('combat:error', { message: 'Игрок не найден' });
+        return;
+      }
+
+      // Начать бой с ботом
+      const combatSystem = gameWorld.getCombatSystem();
+      const combat = combatSystem.startCombatWithBot(player);
+
+      // Уведомить игрока
+      socket.emit('combat:started', { combat });
+      
+      console.log(`🤖 Бой с ботом начат: ${combat.id}`);
+
+      // Обновлять бой каждые 16ms (~60 FPS)
+      const updateInterval = setInterval(() => {
+        const updatedCombat = combatSystem.updateCombat(combat.id, 0.016);
+        
+        if (!updatedCombat) {
+          clearInterval(updateInterval);
+          return;
+        }
+
+        // Отправить обновление игроку
+        socket.emit('combat:update', { combat: updatedCombat });
+
+        // Проверить окончание боя
+        const aliveShips = updatedCombat.ships.filter(s => s.health > 0);
+        const allShipsDead = aliveShips.length <= 1;
+        if (allShipsDead || Date.now() - updatedCombat.startTime > updatedCombat.duration) {
+          const winner = aliveShips.find(s => s.playerId === player.id) 
+            ? player.id 
+            : 'bot';
+          
+          socket.emit('combat:ended', { winner, combat: updatedCombat });
+
+          combatSystem.endCombat(combat.id);
+          clearInterval(updateInterval);
+          console.log(`🤖 Бой с ботом завершен: ${combat.id}, победитель: ${winner}`);
+        }
+      }, 16);
+    });
+
+    /**
+     * Управление кораблем в бою
+     */
+    socket.on('combat:control', (data: {
+      combatId: string;
+      thrust: number;
+      turn: number;
+      boost?: boolean;
+    }) => {
+      const combatSystem = gameWorld.getCombatSystem();
+      combatSystem.applyControl(data.combatId, socket.data.userId, data.thrust, data.turn, data.boost || false);
+    });
+
+    /**
+     * Боевые действия
+     */
+    socket.on(SocketEvent.COMBAT_ACTION, (data: {
+      combatId: string;
+      action: 'thrust' | 'turn' | 'fire';
+      value?: number;
+      weaponId?: string;
+    }) => {
+      const combatSystem = gameWorld.getCombatSystem();
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (!player) return;
+
+      if (data.action === 'thrust' || data.action === 'turn') {
+        const thrust = data.action === 'thrust' ? (data.value || 0) : 0;
+        const turn = data.action === 'turn' ? (data.value || 0) : 0;
+        combatSystem.applyControl(data.combatId, socket.data.userId, thrust, turn);
+      } else if (data.action === 'fire' && data.weaponId) {
+        const weapon = player.ship.weapons.find(w => w.id === data.weaponId);
+        if (weapon) {
+          combatSystem.fireWeapon(data.combatId, socket.data.userId, data.weaponId, weapon);
+        }
+      }
+    });
+
+    /**
+     * Отключение
+     */
+    socket.on('disconnect', () => {
+      console.log(`❌ Игрок отключился: ${socket.data.username}`);
+      gameWorld.removePlayer(socket.data.userId);
+
+      // Уведомить всех об отключении
+      io.emit(SocketEvent.PLAYER_LEAVE, { playerId: socket.data.userId });
+    });
+  });
+
+  // Обновление таймеров происходит внутри GameWorld каждые 100ms
+  // Клиенты получают обновления только при движении игроков
+}
+
+/**
+ * Сериализация состояния игры для отправки клиенту
+ */
+function serializeGameState(state: any) {
+  return {
+    id: state.id,
+    phase: state.phase,
+    turnNumber: state.turnNumber,
+    currentTurn: state.currentTurn,
+    map: {
+      radius: state.map.radius,
+      cells: Array.from(state.map.cells.entries()).map(([key, cell]) => ({
+        key,
+        ...cell,
+      })),
+    },
+    players: Array.from(state.players.entries()).map(([key, player]) =>
+      serializePlayer(player)
+    ),
+  };
+}
+
+/**
+ * Сериализация игрока
+ */
+function serializePlayer(player: any) {
+  return {
+    id: player.id,
+    username: player.username,
+    position: player.position,
+    ship: player.ship,
+    resources: player.resources,
+    experience: player.experience,
+    level: player.level,
+    online: player.online,
+    moveTimer: player.moveTimer,
+    canMove: player.canMove,
+  };
+}

@@ -1,0 +1,157 @@
+.login-page {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+}
+
+.stars {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+}
+
+.stars::before,
+.stars::after {
+  content: '';
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  background: white;
+  box-shadow: 0 0 20px rgba(255, 255, 255, 0.8);
+  border-radius: 50%;
+  animation: twinkle 3s infinite;
+}
+
+.stars::before {
+  top: 20%;
+  left: 30%;
+  animation-delay: 0s;
+}
+
+.stars::after {
+  top: 60%;
+  right: 25%;
+  animation-delay: 1.5s;
+}
+
+@keyframes twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
+.login-container {
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  padding: 20px;
+}
+
+.login-card {
+  background: rgba(15, 20, 40, 0.9);
+  border: 2px solid rgba(100, 150, 255, 0.3);
+  border-radius: 16px;
+  padding: 40px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+
+.game-title {
+  font-size: 42px;
+  font-weight: bold;
+  text-align: center;
+  margin: 0 0 8px 0;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 4px;
+}
+
+.game-subtitle {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 0 32px 0;
+  font-size: 14px;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group label {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.form-group input {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  padding: 12px 16px;
+  color: white;
+  font-size: 15px;
+  transition: all 0.3s;
+}
+
+.form-group input:focus {
+  border-color: rgba(100, 150, 255, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.error-message {
+  background: rgba(255, 80, 80, 0.1);
+  border: 1px solid rgba(255, 80, 80, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  color: #ff8080;
+  font-size: 14px;
+  text-align: center;
+}
+
+.submit-button {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 16px;
+  font-weight: 600;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.submit-button:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 16px rgba(102, 126, 234, 0.4);
+}
+
+.submit-button:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.toggle-button {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 8px;
+  font-size: 14px;
+  transition: color 0.2s;
+}
+
+.toggle-button:hover {
+  color: rgba(255, 255, 255, 0.9);
+}

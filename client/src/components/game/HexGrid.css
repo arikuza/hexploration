@@ -1,0 +1,24 @@
+.hex-grid {
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  background: radial-gradient(circle, #0a0e27 0%, #000000 100%);
+}
+
+.camera-hint {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(20, 30, 48, 0.9);
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  border-radius: 6px;
+  padding: 8px 16px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.camera-hint p {
+  margin: 0;
+}

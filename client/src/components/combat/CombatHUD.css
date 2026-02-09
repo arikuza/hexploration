@@ -1,0 +1,108 @@
+.combat-hud {
+  position: absolute;
+  top: 20px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  padding: 0 20px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.hud-player,
+.hud-enemy {
+  background: rgba(20, 30, 48, 0.95);
+  border: 2px solid rgba(100, 150, 255, 0.3);
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 250px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.hud-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #90caf9;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.ship-status {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.status-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.status-progress {
+  height: 8px;
+  background: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.status-fill {
+  height: 100%;
+  transition: width 0.3s ease;
+  border-radius: 3px;
+}
+
+.status-fill.health {
+  background: linear-gradient(90deg, #ff4444 0%, #ff6b6b 50%, #00ff88 100%);
+  background-size: 200% 100%;
+}
+
+.status-fill.energy {
+  background: linear-gradient(90deg, #4444ff, #64b5f6);
+}
+
+.status-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  padding: 4px 0;
+}
+
+.hud-timer {
+  background: rgba(20, 30, 48, 0.95);
+  border: 2px solid rgba(100, 150, 255, 0.3);
+  border-radius: 8px;
+  padding: 16px 24px;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+}
+
+.timer-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #64b5f6;
+  font-family: 'Courier New', monospace;
+}
+
+.timer-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-top: 4px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.hud-enemy .hud-title {
+  color: #ff6b6b;
+}

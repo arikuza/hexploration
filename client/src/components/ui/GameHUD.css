@@ -1,0 +1,102 @@
+.game-hud {
+  height: 80px;
+  background: rgba(10, 14, 39, 0.95);
+  border-bottom: 2px solid rgba(100, 150, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+}
+
+.hud-left,
+.hud-center,
+.hud-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.game-title-small {
+  font-size: 20px;
+  font-weight: bold;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  letter-spacing: 2px;
+}
+
+.turn-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+}
+
+.can-move {
+  color: #00ff88;
+  font-weight: bold;
+}
+
+.on-cooldown {
+  color: #ffaa00;
+  font-weight: bold;
+}
+
+.player-stats {
+  display: flex;
+  gap: 24px;
+}
+
+.stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.stat-label {
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.stat-bar {
+  width: 100px;
+  height: 12px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+  border-radius: 6px;
+}
+
+.stat-bar-fill.health {
+  background: linear-gradient(90deg, #ff4444, #ff8844);
+}
+
+.stat-bar-fill.energy {
+  background: linear-gradient(90deg, #4488ff, #44ffff);
+}
+
+.stat-value {
+  color: white;
+  font-weight: 600;
+  min-width: 60px;
+}
+
+.logout-button {
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  border-radius: 8px;
+  padding: 10px 20px;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.logout-button:hover {
+  background: rgba(255, 80, 80, 0.2);
+}
