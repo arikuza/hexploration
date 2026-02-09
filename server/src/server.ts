@@ -4,9 +4,14 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import path from 'path';
-import { authRouter } from './routes/auth';
-import { gameRouter } from './routes/game';
-import { setupGameSocket } from './socket/gameSocket';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+import { authRouter } from './routes/auth.js';
+import { gameRouter } from './routes/game.js';
+import { setupGameSocket } from './socket/gameSocket.js';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 dotenv.config();
 

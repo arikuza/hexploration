@@ -7,8 +7,8 @@ import {
   HexCoordinates,
 } from '@hexploration/shared';
 import { MAP_RADIUS, SHIP_STATS, MOVE_COOLDOWN, hexDistance, DEFAULT_WEAPONS } from '@hexploration/shared';
-import { HexMapManager } from './HexMap';
-import { CombatSystem } from './CombatSystem';
+import { HexMapManager } from './HexMap.js';
+import { CombatSystem } from './CombatSystem.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Server } from 'socket.io';
 

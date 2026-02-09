@@ -29,7 +29,7 @@ import {
   BOOST_MIN_ENERGY
 } from '@hexploration/shared';
 import { v4 as uuidv4 } from 'uuid';
-import { NPCBot } from './NPCBot';
+import { NPCBot } from './NPCBot.js';
 
 export class CombatSystem {
   private combats: Map<string, CombatState> = new Map();

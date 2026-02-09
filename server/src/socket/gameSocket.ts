@@ -1,6 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
-import { gameWorld } from '../game/GameWorld';
+import { gameWorld } from '../game/GameWorld.js';
 import { SocketEvent, HexCoordinates } from '@hexploration/shared';
 
 interface AuthToken {

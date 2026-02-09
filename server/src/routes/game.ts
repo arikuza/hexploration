@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { gameWorld } from '../game/GameWorld';
+import { gameWorld } from '../game/GameWorld.js';
 
 const router = Router();
 
