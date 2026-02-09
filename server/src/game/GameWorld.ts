@@ -40,6 +40,11 @@ class GameWorld {
     this.timerInterval = setInterval(() => {
       this.updatePlayerTimers();
     }, 100); // Обновлять каждые 100ms
+
+    // Запустить проверку деградации колоний каждые 10 секунд
+    setInterval(() => {
+      this.hexMap.checkColonyDecay();
+    }, 10000);
   }
 
   /**
@@ -222,6 +227,47 @@ class GameWorld {
    */
   getCombatSystem(): CombatSystem {
     return this.combatSystem;
+  }
+
+  /**
+   * Колонизировать систему
+   */
+  colonizeSystem(playerId: string, coordinates: HexCoordinates): { success: boolean; error?: string } {
+    const player = this.state.players.get(playerId);
+    if (!player) {
+      return { success: false, error: 'Игрок не найден' };
+    }
+
+    // Проверить, что игрок в этой системе
+    if (player.position.q !== coordinates.q || player.position.r !== coordinates.r) {
+      return { success: false, error: 'Вы должны находиться в системе для колонизации' };
+    }
+
+    return this.hexMap.colonizeSystem(coordinates, playerId);
+  }
+
+  /**
+   * Развить колонию
+   */
+  developColony(playerId: string, coordinates: HexCoordinates): { success: boolean; error?: string } {
+    const player = this.state.players.get(playerId);
+    if (!player) {
+      return { success: false, error: 'Игрок не найден' };
+    }
+
+    // Проверить, что игрок в этой системе
+    if (player.position.q !== coordinates.q || player.position.r !== coordinates.r) {
+      return { success: false, error: 'Вы должны находиться в колонии для её развития' };
+    }
+
+    return this.hexMap.developColony(coordinates, playerId);
+  }
+
+  /**
+   * Получить HexMap Manager
+   */
+  getHexMap(): HexMapManager {
+    return this.hexMap;
   }
 }
 

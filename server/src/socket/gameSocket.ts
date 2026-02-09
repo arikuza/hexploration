@@ -88,6 +88,77 @@ export function setupGameSocket(io: Server): void {
     });
 
     /**
+     * Колонизировать систему
+     */
+    socket.on(SocketEvent.COLONIZE, (data: { coordinates: HexCoordinates }) => {
+      console.log(`🏛️ ${socket.data.username} пытается колонизировать [${data.coordinates.q}, ${data.coordinates.r}]`);
+      
+      const result = gameWorld.colonizeSystem(socket.data.userId, data.coordinates);
+
+      if (result.success) {
+        socket.emit(SocketEvent.COLONIZE_SUCCESS, { coordinates: data.coordinates });
+        
+        // Уведомить всех об обновлении карты
+        const state = gameWorld.getState();
+        io.emit(SocketEvent.GAME_UPDATE, {
+          type: 'colony_created',
+          coordinates: data.coordinates,
+          playerId: socket.data.userId,
+          map: {
+            radius: state.map.radius,
+            cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
+              key,
+              ...cell,
+            })),
+          },
+        });
+        
+        console.log(`✅ Система [${data.coordinates.q}, ${data.coordinates.r}] колонизирована игроком ${socket.data.username}`);
+      } else {
+        socket.emit(SocketEvent.COLONIZE_ERROR, { message: result.error });
+        console.log(`❌ Не удалось колонизировать: ${result.error}`);
+      }
+    });
+
+    /**
+     * Развить колонию
+     */
+    socket.on(SocketEvent.DEVELOP_COLONY, (data: { coordinates: HexCoordinates }) => {
+      console.log(`📈 ${socket.data.username} развивает колонию [${data.coordinates.q}, ${data.coordinates.r}]`);
+      
+      const result = gameWorld.developColony(socket.data.userId, data.coordinates);
+
+      if (result.success) {
+        const cell = gameWorld.getHexMap().getCell(data.coordinates);
+        socket.emit(SocketEvent.DEVELOP_SUCCESS, { 
+          coordinates: data.coordinates,
+          controlStrength: cell?.controlStrength,
+        });
+        
+        // Уведомить всех об обновлении карты
+        const state = gameWorld.getState();
+        io.emit(SocketEvent.GAME_UPDATE, {
+          type: 'colony_developed',
+          coordinates: data.coordinates,
+          playerId: socket.data.userId,
+          controlStrength: cell?.controlStrength,
+          map: {
+            radius: state.map.radius,
+            cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
+              key,
+              ...cell,
+            })),
+          },
+        });
+        
+        console.log(`✅ Колония [${data.coordinates.q}, ${data.coordinates.r}] развита до СС=${cell?.controlStrength}`);
+      } else {
+        socket.emit(SocketEvent.DEVELOP_ERROR, { message: result.error });
+        console.log(`❌ Не удалось развить колонию: ${result.error}`);
+      }
+    });
+
+    /**
      * Начать бой
      */
     socket.on('combat:start', (data: { targetPlayerId: string }) => {

@@ -129,4 +129,143 @@ export class HexMapManager {
   getMap(): HexMap {
     return this.map;
   }
+
+  /**
+   * Колонизировать систему
+   */
+  colonizeSystem(coordinates: HexCoordinates, playerId: string): { success: boolean; error?: string } {
+    const cell = this.getCell(coordinates);
+    if (!cell) {
+      return { success: false, error: 'Система не найдена' };
+    }
+
+    // Проверить, что система еще не колонизирована
+    if (cell.owner && cell.owner !== 'npc') {
+      return { success: false, error: 'Система уже колонизирована другим игроком' };
+    }
+
+    // Проверить, что система не NPC станция
+    if (cell.hasStation && cell.owner === 'npc') {
+      return { success: false, error: 'Нельзя колонизировать NPC станцию' };
+    }
+
+    // Проверить, что система не под сильным влиянием других систем (threat > 0)
+    if (cell.threat > 0) {
+      return { success: false, error: 'Система под влиянием других фракций' };
+    }
+
+    // Колонизировать
+    cell.systemType = SystemType.PLANETARY;
+    cell.owner = playerId;
+    cell.hasStation = true;
+    cell.controlStrength = 1.0; // Начальная сила контроля
+    cell.lastDecayCheck = Date.now();
+
+    // Пересчитать влияние на соседние системы
+    this.updateInfluenceFromColony(coordinates);
+
+    return { success: true };
+  }
+
+  /**
+   * Развить колонию (увеличить СС)
+   */
+  developColony(coordinates: HexCoordinates, playerId: string): { success: boolean; error?: string } {
+    const cell = this.getCell(coordinates);
+    if (!cell) {
+      return { success: false, error: 'Система не найдена' };
+    }
+
+    // Проверить, что система принадлежит игроку
+    if (cell.owner !== playerId) {
+      return { success: false, error: 'Это не ваша колония' };
+    }
+
+    // Проверить, что это колония
+    if (!cell.controlStrength) {
+      return { success: false, error: 'Это не колония' };
+    }
+
+    // Увеличить силу контроля
+    cell.controlStrength = Math.min(10.0, cell.controlStrength + 0.1);
+
+    // Пересчитать влияние
+    this.updateInfluenceFromColony(coordinates);
+
+    return { success: true };
+  }
+
+  /**
+   * Обновить влияние от колонии на окружающие системы
+   */
+  private updateInfluenceFromColony(colonyCoords: HexCoordinates): void {
+    const colony = this.getCell(colonyCoords);
+    if (!colony || !colony.controlStrength) return;
+
+    const maxInfluence = Math.floor(colony.controlStrength * 2); // Дальность влияния зависит от СС
+
+    // Обновить threat для всех гексов в радиусе влияния
+    this.map.cells.forEach((cell) => {
+      // Не обновлять NPC станции и другие колонии
+      if (cell.hasStation && cell.owner) return;
+
+      const distance = hexDistance(colonyCoords, cell.coordinates);
+      if (distance > 0 && distance <= maxInfluence) {
+        // Вычислить влияние от этой колонии
+        const influence = this.calculateThreatFromStation(distance, colony.controlStrength! / 10); // Нормализовать к [0, 1]
+        
+        // Обновить threat только если влияние больше текущего
+        if (influence > cell.threat) {
+          cell.threat = influence;
+        }
+      }
+    });
+  }
+
+  /**
+   * Проверить деградацию всех колоний
+   */
+  checkColonyDecay(): void {
+    const now = Date.now();
+    const decayInterval = 5 * 60 * 1000; // 5 минут
+
+    this.map.cells.forEach((cell) => {
+      // Проверяем только пользовательские колонии
+      if (!cell.controlStrength || !cell.owner || cell.owner === 'npc') return;
+      if (!cell.lastDecayCheck) cell.lastDecayCheck = now;
+
+      // Проверяем, прошло ли 5 минут
+      if (now - cell.lastDecayCheck < decayInterval) return;
+
+      // Проверяем наличие красных зон рядом (threat < -0.5)
+      const hasNearbyDanger = this.checkNearbyDanger(cell.coordinates);
+
+      if (hasNearbyDanger) {
+        // Деградация: -0.1 к СС
+        cell.controlStrength = Math.max(0.1, cell.controlStrength - 0.1);
+        
+        // Обновить влияние
+        this.updateInfluenceFromColony(cell.coordinates);
+      }
+
+      cell.lastDecayCheck = now;
+    });
+  }
+
+  /**
+   * Проверить наличие опасных зон рядом
+   */
+  private checkNearbyDanger(coordinates: HexCoordinates): boolean {
+    const radius = 3; // Проверяем в радиусе 3 гексов
+    const hexes = hexInRadius(coordinates, radius);
+
+    for (const hex of hexes) {
+      const cell = this.getCell(hex);
+      if (cell && cell.threat < -0.5) {
+        return true; // Есть опасная зона рядом
+      }
+    }
+
+    return false;
+  }
 }

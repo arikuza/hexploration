@@ -65,6 +65,18 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
     socketService.emit('combat:start:bot');
   };
 
+  const handleColonize = () => {
+    if (!selectedHex) return;
+    console.log('🏛️ Колонизируем систему...');
+    socketService.emit('colonize', { coordinates: selectedHex });
+  };
+
+  const handleDevelop = () => {
+    if (!selectedHex) return;
+    console.log('📈 Развиваем колонию...');
+    socketService.emit('develop:colony', { coordinates: selectedHex });
+  };
+
   return (
     <div className="hex-info">
       <div className="hex-info-header">
@@ -93,7 +105,8 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
                 <div className="info-row">
                   <span className="info-label">Владелец:</span>
                   <span className="info-value">
-                    {hexCell.owner === 'npc' ? 'NPC Фракция' : hexCell.owner}
+                    {hexCell.owner === 'npc' ? 'NPC Фракция' : 
+                     hexCell.owner === currentPlayer?.id ? 'Вы' : hexCell.owner}
                   </span>
                 </div>
               )}
@@ -102,6 +115,13 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
                 <div className="info-row">
                   <span className="info-label">Станция:</span>
                   <span className="info-value">✓ Есть</span>
+                </div>
+              )}
+              
+              {hexCell.controlStrength !== undefined && (
+                <div className="info-row">
+                  <span className="info-label">Сила контроля:</span>
+                  <span className="info-value">{hexCell.controlStrength.toFixed(1)}</span>
                 </div>
               )}
               
@@ -148,6 +168,21 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
             <button className="bot-combat-button" onClick={handleBotCombat}>
               🤖 Бой с ботом
             </button>
+            
+            {/* Кнопка колонизации - доступна если система не принадлежит никому и не под влиянием */}
+            {(!hexCell?.owner || (hexCell.owner !== 'npc' && hexCell.owner !== currentPlayer?.id)) && 
+             hexCell?.threat !== undefined && hexCell.threat <= 0 && (
+              <button className="colonize-button" onClick={handleColonize}>
+                🏛️ Колонизировать систему
+              </button>
+            )}
+            
+            {/* Кнопка развития - доступна если система принадлежит игроку */}
+            {hexCell?.owner === currentPlayer?.id && hexCell?.controlStrength !== undefined && (
+              <button className="develop-button" onClick={handleDevelop}>
+                📈 Развить колонию (+0.1 СС)
+              </button>
+            )}
           </div>
         )}
       </div>

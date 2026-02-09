@@ -128,6 +128,9 @@
   margin-top: 8px;
   padding-top: 16px;
   border-top: 1px solid rgba(100, 150, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .bot-combat-button {
@@ -151,6 +154,54 @@
 }
 
 .bot-combat-button:active {
+  transform: translateY(0);
+}
+
+.colonize-button {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #4caf50 0%, #45a049 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.colonize-button:hover {
+  background: linear-gradient(135deg, #45a049 0%, #4caf50 100%);
+  box-shadow: 0 4px 12px rgba(76, 175, 80, 0.5);
+  transform: translateY(-2px);
+}
+
+.colonize-button:active {
+  transform: translateY(0);
+}
+
+.develop-button {
+  width: 100%;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #2196f3 0%, #1976d2 100%);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.develop-button:hover {
+  background: linear-gradient(135deg, #1976d2 0%, #2196f3 100%);
+  box-shadow: 0 4px 12px rgba(33, 150, 243, 0.5);
+  transform: translateY(-2px);
+}
+
+.develop-button:active {
   transform: translateY(0);
 }
 

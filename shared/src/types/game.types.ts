@@ -120,4 +120,14 @@ export enum SocketEvent {
   PLAYER_JOIN = 'player:join',
   PLAYER_LEAVE = 'player:leave',
   PLAYERS_LIST = 'players:list',
+  
+  // Колонизация
+  COLONIZE = 'colonize',
+  COLONIZE_SUCCESS = 'colonize:success',
+  COLONIZE_ERROR = 'colonize:error',
+  
+  // Развитие колонии
+  DEVELOP_COLONY = 'develop:colony',
+  DEVELOP_SUCCESS = 'develop:success',
+  DEVELOP_ERROR = 'develop:error',
 }
