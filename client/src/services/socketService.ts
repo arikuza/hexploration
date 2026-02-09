@@ -1,9 +1,9 @@
 import { io, Socket } from 'socket.io-client';
 import { SocketEvent, HexCoordinates } from '@hexploration/shared';
 
-// In production, use the same domain (empty VITE_WS_URL)
+// In production (when MODE is production and no VITE_WS_URL is set), use relative paths (empty string for same domain)
 // In development, use localhost
-const SERVER_URL = import.meta.env.VITE_WS_URL || 'http://localhost:3050';
+const SERVER_URL = import.meta.env.VITE_WS_URL || (import.meta.env.MODE === 'production' ? '' : 'http://localhost:3050');
 
 class SocketService {
   private socket: Socket | null = null;
