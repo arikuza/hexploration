@@ -15,7 +15,8 @@
     "build:client": "npm run build --workspace=client",
     "build:server": "npm run build --workspace=server",
     "start:server": "npm run start --workspace=server",
-    "railway:server": "npm run build --workspace=shared && npm run build --workspace=server && npm run start --workspace=server"
+    "railway:build": "npm install && npm run build --workspace=shared && npm run build --workspace=server && npm run build --workspace=client",
+    "railway:start": "npm run start --workspace=server"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

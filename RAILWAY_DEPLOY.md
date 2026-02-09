@@ -1,134 +1,150 @@
-# Деплой на Railway
+# Деплой Hexploration на Railway
 
-## Шаг 1: Подготовка репозитория
+## Структура проекта
 
-1. Создай репозиторий на GitHub и залей туда код:
+Hexploration - это монорепозиторий с 3 пакетами:
+- `shared` - общие типы и константы
+- `server` - Node.js/Express/Socket.io сервер
+- `client` - React + Vite клиент
+
+**Важно**: Деплой использует **один сервис** Railway, который:
+- Собирает все три пакета (shared, server, client)
+- Сервер раздаёт статические файлы клиента в продакшн режиме
+- Обрабатывает API и WebSocket через Express
+
+## 1. Подготовка проекта
+
+### 1.1 GitHub репозиторий
+
+Проект уже должен быть на GitHub: `https://github.com/arikuza/hexploration.git`
+
+Если ещё не запушен:
+
 ```bash
-git init
 git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/твой-username/hexploration.git
+git commit -m "Prepare for Railway deployment"
 git push -u origin main
 ```
 
-2. Создай `.gitignore` если его нет:
-```
-node_modules/
-dist/
-build/
-.env
-.env.local
-*.log
-.DS_Store
-```
+### 1.2 Файлы конфигурации
 
-## Шаг 2: Настройка Railway
+В проекте уже есть:
+- `railway.json` - конфигурация Railway
+- `package.json` (root) - скрипты для сборки:
+  - `railway:build` - собирает shared, server, client
+  - `railway:start` - запускает сервер
+- `.env.example` файлы для сервера и клиента
+
+## 2. Настройка Railway
 
 ### 2.1 Создать проект
-1. Зайди на https://railway.app/
-2. Войди через GitHub
-3. Нажми "New Project" → "Deploy from GitHub repo"
-4. Выбери репозиторий `hexploration`
 
-### 2.2 Настроить СЕРВЕР (бэкенд)
+1. Зайди на [railway.app](https://railway.app)
+2. Авторизуйся через GitHub
+3. Нажми "New Project"
+4. Выбери "Deploy from GitHub repo"
+5. Выбери репозиторий `arikuza/hexploration`
 
-**Railway автоматически обнаружит монорепо. Создай первый сервис для бэкенда:**
+### 2.2 Настроить единственный сервис
 
-1. В настройках сервиса:
-   - **Name**: `hexploration-server`
-   - **Root Directory**: оставь `/` (корень)
-   - **Build Command**: `npm run railway:server`
-   - **Start Command**: `npm run start:server`
+Railway автоматически создаст один сервис. Проверь настройки:
 
-2. Добавь переменные окружения (Settings → Variables):
-   ```
-   NODE_ENV=production
-   PORT=3050
-   JWT_SECRET=твой-супер-секретный-ключ-измени-это
-   CLIENT_URL=https://hexploration-client.up.railway.app
-   ```
-   
-3. Railway автоматически выделит домен для сервера (например: `hexploration-server.up.railway.app`)
-
-### 2.3 Настроить КЛИЕНТ (фронтенд)
-
-**Создай второй сервис для клиента:**
-
-1. В том же проекте нажми "New Service" → "GitHub Repo" → выбери тот же репозиторий
-
-2. В настройках сервиса:
-   - **Name**: `hexploration-client`
-   - **Root Directory**: `/client`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: не нужен (статика)
-
-3. Добавь переменные окружения:
-   ```
-   VITE_API_URL=https://hexploration-server.up.railway.app
-   VITE_WS_URL=https://hexploration-server.up.railway.app
-   ```
-
-4. В Settings → Networking:
-   - Включи "Public Networking"
-   - Railway выделит домен (например: `hexploration-client.up.railway.app`)
-
-### 2.4 Обновить CORS на сервере
-
-Вернись в настройки сервера и обнови `CLIENT_URL`:
+**Build Command**: (должно быть автоматически из `railway.json`)
 ```
-CLIENT_URL=https://hexploration-client.up.railway.app
+npm run railway:build
 ```
 
-## Шаг 3: Деплой
+**Start Command**: (должно быть автоматически из `railway.json`)
+```
+npm run railway:start
+```
 
-1. Railway автоматически задеплоит оба сервиса
-2. Следи за логами в разделе "Deployments"
-3. После успешного деплоя открой URL клиента
+**Root Directory**: `/` (корень репозитория)
 
-## Шаг 4: Обновления
+### 2.3 Настроить переменные окружения
 
-Любой push в main ветку автоматически запустит новый деплой!
+В настройках сервиса добавь:
+
+```
+NODE_ENV=production
+PORT=3050
+JWT_SECRET=твой-супер-секретный-ключ-измени-это
+```
+
+**Важно**: 
+- `CLIENT_URL` НЕ нужен (клиент на том же домене)
+- `VITE_API_URL` и `VITE_WS_URL` НЕ нужны (сервер и клиент на одном домене)
+
+### 2.4 Деплой
+
+1. Railway автоматически начнёт деплой после добавления переменных
+2. Подожди завершения сборки (5-10 минут)
+3. Railway выделит публичный домен (например: `hexploration-production.up.railway.app`)
+4. Открой этот домен в браузере
+
+## 3. Проверка
+
+После деплоя проверь:
+
+1. **Главная страница**: `https://твой-домен.up.railway.app/`
+   - Должна показать React приложение
+
+2. **API Health Check**: `https://твой-домен.up.railway.app/health`
+   - Должен вернуть `{"status":"ok","timestamp":"..."}`
+
+3. **WebSocket**: Открой DevTools → Network → WS
+   - Должно быть активное WebSocket соединение
+
+## 4. Обновление кода
+
+После изменений в коде:
 
 ```bash
 git add .
-git commit -m "Update feature"
-git push
+git commit -m "Update game logic"
+git push origin main
 ```
 
-## Важные заметки
+Railway автоматически пересоберёт и задеплоит новую версию.
 
-- **Бесплатный лимит**: $5 в месяц или 500 часов
-- **Автоматический SSL**: Railway предоставляет HTTPS автоматически
-- **Логи**: Доступны в реальном времени в интерфейсе Railway
-- **Масштабирование**: Можно увеличить ресурсы в настройках
+## 5. Логи и отладка
 
-## Альтернатива: Один сервис (все в одном)
+В Railway:
+1. Открой свой проект
+2. Выбери сервис
+3. Вкладка "Deployments" → последний деплой → "View Logs"
 
-Если хочешь использовать только один сервис, можно настроить Express чтобы он сервил статику клиента.
+## 6. Возможные проблемы
 
-Добавь в `server/src/server.ts` после других middleware:
+### Ошибка сборки
 
-```typescript
-import path from 'path';
+Если сборка падает:
+- Проверь логи Railway
+- Убедись что `railway:build` скрипт работает локально:
+  ```bash
+  npm run railway:build
+  ```
 
-// Сервить статические файлы клиента (только в продакшн)
-if (process.env.NODE_ENV === 'production') {
-  app.use(express.static(path.join(__dirname, '../../client/build')));
-  
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '../../client/build/index.html'));
-  });
-}
-```
+### WebSocket не подключается
 
-Тогда в Railway настрой:
-- **Build Command**: `npm run build && npm run build:client`
-- **Start Command**: `npm run start:server`
-- Только одна переменная `NODE_ENV=production`
+- Проверь что в клиенте WebSocket использует тот же домен что и HTTP
+- В продакшн режиме `socketService.ts` должен использовать `window.location.origin`
 
-## Проблемы?
+### 404 на маршрутах клиента
 
-- **CORS ошибки**: Проверь что `CLIENT_URL` правильный в переменных сервера
-- **Не подключается WebSocket**: Убедись что используешь HTTPS и WSS (Railway делает это автоматически)
-- **500 ошибка**: Проверь логи сервера в Railway dashboard
+- Убедись что в `server.ts` есть обработчик `app.get('*', ...)` для SPA routing
+- Он должен быть **после** всех API маршрутов
+
+## 7. Стоимость
+
+Railway предоставляет:
+- $5 бесплатных кредитов в месяц
+- Этого хватает на ~500 часов работы небольшого сервиса
+- Для хобби-проекта достаточно
+
+## 8. Альтернативы
+
+Если Railway не подходит:
+- **Render.com** - похожий сервис, тоже бесплатный tier
+- **Fly.io** - больше контроля, сложнее настройка
+- **VPS (DigitalOcean, Linode)** - полный контроль, от $5/месяц

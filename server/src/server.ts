@@ -3,6 +3,7 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import path from 'path';
 import { authRouter } from './routes/auth';
 import { gameRouter } from './routes/game';
 import { setupGameSocket } from './socket/gameSocket';
@@ -41,6 +42,17 @@ app.use('/api/game', gameRouter);
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
+
+// Сервить статические файлы клиента в продакшн
+if (process.env.NODE_ENV === 'production') {
+  const clientBuildPath = path.join(__dirname, '../../client/dist');
+  app.use(express.static(clientBuildPath));
+  
+  // Для всех остальных маршрутов отдавать index.html (SPA routing)
+  app.get('*', (req, res) => {
+    res.sendFile(path.join(clientBuildPath, 'index.html'));
+  });
+}
 
 // Setup Socket.io
 setupGameSocket(io);
