@@ -130,4 +130,18 @@ export enum SocketEvent {
   DEVELOP_COLONY = 'develop:colony',
   DEVELOP_SUCCESS = 'develop:success',
   DEVELOP_ERROR = 'develop:error',
+  
+  // Планетарные системы
+  SYSTEM_GET = 'system:get',
+  SYSTEM_DATA = 'system:data',
+  SYSTEM_ERROR = 'system:error',
+  
+  // Структуры
+  SYSTEM_BUILD_STRUCTURE = 'system:build_structure',
+  SYSTEM_BUILD_SUCCESS = 'system:build:success',
+  SYSTEM_BUILD_ERROR = 'system:build:error',
+  
+  SYSTEM_COLLECT_RESOURCES = 'system:collect_resources',
+  SYSTEM_COLLECT_SUCCESS = 'system:collect:success',
+  SYSTEM_COLLECT_ERROR = 'system:collect:error',
 }

@@ -48,7 +48,10 @@ export interface HexCell {
   discoveredBy?: string[];  // Кто открыл этот сектор
   hasStation?: boolean;     // Есть ли станция в системе
   lastDecayCheck?: number;  // Время последней проверки деградации (timestamp)
-  
+
+  /** ID планетарной системы (если systemType === PLANETARY). Ссылка на детальные данные звезды, планет, поясов. */
+  planetarySystemId?: string;
+
   // Старое поле для обратной совместимости (deprecated)
   type?: HexType;
 }

@@ -31,6 +31,7 @@ export class GameWorldService {
           discoveredBy: cell.discoveredBy || [],
           hasStation: cell.hasStation,
           lastDecayCheck: cell.lastDecayCheck,
+          planetarySystemId: cell.planetarySystemId,
         });
       });
 
@@ -63,6 +64,7 @@ export class GameWorldService {
         discoveredBy: cell.discoveredBy || [],
         hasStation: cell.hasStation,
         lastDecayCheck: cell.lastDecayCheck,
+        planetarySystemId: cell.planetarySystemId,
       }));
 
       await GameWorldModel.findOneAndUpdate(

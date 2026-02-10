@@ -1,5 +1,7 @@
 import { HexMap, HexCell, HexType, HexCoordinates, SystemType, THREAT_ZONES } from '@hexploration/shared';
 import { hexInRadius, hexKey, hexDistance } from '@hexploration/shared';
+import { PlanetarySystemGenerator } from './PlanetarySystemGenerator.js';
+import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
 
 export class HexMapManager {
   private map: HexMap;
@@ -64,6 +66,70 @@ export class HexMapManager {
 
       this.map.cells.set(hexKey(hex), cell);
     });
+  }
+
+  /**
+   * Убедиться что планетарная система сгенерирована и сохранена в БД
+   * Генерирует систему если её еще нет
+   */
+  async ensurePlanetarySystem(coordinates: HexCoordinates): Promise<string | null> {
+    const cell = this.getCell(coordinates);
+    if (!cell || cell.systemType !== SystemType.PLANETARY) {
+      return null;
+    }
+
+    // Если система уже есть - вернуть её ID
+    if (cell.planetarySystemId) {
+      return cell.planetarySystemId;
+    }
+
+    // Генерировать новую систему
+    const hexKeyStr = hexKey(coordinates);
+    const system = PlanetarySystemGenerator.generate(coordinates);
+    
+    // Сохранить в БД
+    await PlanetarySystemService.save(system);
+    
+    // Установить ID в ячейке
+    cell.planetarySystemId = hexKeyStr;
+    
+    return hexKeyStr;
+  }
+
+  /**
+   * Генерировать планетарные системы для всех планетарных гексов (пакетно)
+   * Вызывается после создания новой карты
+   */
+  async generateAllPlanetarySystems(): Promise<void> {
+    const systemsToGenerate: Array<{ coordinates: HexCoordinates; hexKey: string }> = [];
+    
+    // Найти все планетарные гексы без системы
+    this.map.cells.forEach((cell, key) => {
+      if (cell.systemType === SystemType.PLANETARY && !cell.planetarySystemId) {
+        systemsToGenerate.push({ coordinates: cell.coordinates, hexKey: key });
+      }
+    });
+
+    if (systemsToGenerate.length === 0) {
+      return;
+    }
+
+    console.log(`🌌 Генерация ${systemsToGenerate.length} планетарных систем...`);
+
+    // Генерировать все системы
+    const systems = systemsToGenerate.map(({ coordinates, hexKey }) => {
+      const system = PlanetarySystemGenerator.generate(coordinates);
+      const cell = this.map.cells.get(hexKey);
+      if (cell) {
+        cell.planetarySystemId = hexKey;
+      }
+      return system;
+    });
+
+    // Сохранить пакетно в БД
+    await PlanetarySystemService.saveMany(systems);
+    
+    console.log(`✅ Сгенерировано и сохранено ${systems.length} планетарных систем`);
   }
 
   /**

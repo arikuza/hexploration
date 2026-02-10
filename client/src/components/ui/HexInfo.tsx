@@ -6,9 +6,10 @@ import './HexInfo.css';
 
 interface HexInfoProps {
   selectedHex: HexCoordinates | null;
+  onOpenPlanetarySystem?: (coordinates: HexCoordinates) => void;
 }
 
-export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
+export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySystem }) => {
   const players = useAppSelector((state) => state.player.players);
   const currentPlayer = useAppSelector((state) => state.player.currentPlayer);
   const map = useAppSelector((state) => state.game.map);
@@ -155,6 +156,20 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
             </ul>
           )}
         </div>
+
+        {/* Кнопка открыть планетарную систему — для любого планетарного гекса */}
+        {hexCell?.systemType === 'planetary' && (
+          <div className="hex-section">
+            <button
+              type="button"
+              className="colonize-button hex-open-system-btn"
+              onClick={() => onOpenPlanetarySystem?.(selectedHex)}
+            >
+              🌌 Открыть систему
+            </button>
+          </div>
+        )}
+
 
         {isCurrentPlayerHere && (
           <div className="hex-actions">

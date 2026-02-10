@@ -11,6 +11,7 @@
   box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
   max-height: 50vh;
   overflow-y: auto;
+  z-index: 5;
 }
 
 .hex-info-header {
@@ -222,4 +223,75 @@
 
 .hex-info::-webkit-scrollbar-thumb:hover {
   background: rgba(100, 150, 255, 0.5);
+}
+
+.hex-open-system-btn {
+  margin-bottom: 8px;
+}
+
+.hex-planetary-view-wrap {
+  margin-top: 12px;
+}
+
+/* Модальное окно планетарной системы — полноэкранный попап */
+.planetary-system-modal {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 99999 !important;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.planetary-system-modal__box {
+  width: min(900px, 92vw);
+  height: min(700px, 85vh);
+  max-width: 95vw;
+  max-height: 90vh;
+  background: linear-gradient(180deg, #0d0d18 0%, #1a1a2e 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(100, 150, 255, 0.3);
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.planetary-system-modal__box .planetary-system-view {
+  overflow: hidden;
+}
+
+.planetary-system-modal__box .planetary-system-view {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.planetary-system-modal__box .planetary-system-view canvas {
+  flex: 1;
+  min-height: 400px;
+  width: 100%;
+}
+
+/* Прокрутка для модального окна */
+.planetary-system-modal::-webkit-scrollbar {
+  width: 8px;
+}
+
+.planetary-system-modal::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.planetary-system-modal::-webkit-scrollbar-thumb {
+  background: rgba(100, 150, 255, 0.4);
+  border-radius: 4px;
+}
+
+.planetary-system-modal::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 150, 255, 0.6);
 }

@@ -15,6 +15,7 @@ export interface IGameWorld extends Document {
     discoveredBy?: string[];
     hasStation?: boolean;
     lastDecayCheck?: number;
+    planetarySystemId?: string;
   }>;
   lastUpdate: Date;
 }
@@ -48,6 +49,7 @@ const GameWorldSchema = new Schema<IGameWorld>({
     discoveredBy: [String],
     hasStation: Boolean,
     lastDecayCheck: Number,
+    planetarySystemId: String,
   }],
   lastUpdate: {
     type: Date,

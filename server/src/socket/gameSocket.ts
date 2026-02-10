@@ -304,6 +304,110 @@ export function setupGameSocket(io: Server): void {
     });
 
     /**
+     * Получить данные планетарной системы
+     */
+    socket.on(SocketEvent.SYSTEM_GET, async (data: { coordinates: HexCoordinates }) => {
+      try {
+        const system = await gameWorld.getPlanetarySystem(data.coordinates);
+        
+        if (!system) {
+          socket.emit(SocketEvent.SYSTEM_ERROR, { 
+            message: 'Планетарная система не найдена' 
+          });
+          return;
+        }
+
+        socket.emit(SocketEvent.SYSTEM_DATA, { system });
+      } catch (error: any) {
+        console.error('❌ Ошибка получения планетарной системы:', error);
+        socket.emit(SocketEvent.SYSTEM_ERROR, { 
+          message: error.message || 'Ошибка получения системы' 
+        });
+      }
+    });
+
+    /**
+     * Построить структуру в планетарной системе
+     */
+    socket.on(SocketEvent.SYSTEM_BUILD_STRUCTURE, async (data: {
+      coordinates: HexCoordinates;
+      structureType: string;
+      location: any;
+    }) => {
+      try {
+        const result = await gameWorld.buildStructure(
+          socket.data.userId,
+          data.coordinates,
+          data.structureType,
+          data.location
+        );
+
+        if (result.success) {
+          // Отправить обновленную систему
+          const system = await gameWorld.getPlanetarySystem(data.coordinates);
+          socket.emit(SocketEvent.SYSTEM_BUILD_SUCCESS, { 
+            structure: result.structure,
+            system,
+          });
+
+          // Уведомить всех об обновлении системы
+          io.emit(SocketEvent.GAME_UPDATE, {
+            type: 'system_structure_built',
+            coordinates: data.coordinates,
+            playerId: socket.data.userId,
+          });
+        } else {
+          socket.emit(SocketEvent.SYSTEM_BUILD_ERROR, { 
+            message: result.error || 'Ошибка постройки структуры' 
+          });
+        }
+      } catch (error: any) {
+        console.error('❌ Ошибка постройки структуры:', error);
+        socket.emit(SocketEvent.SYSTEM_BUILD_ERROR, { 
+          message: error.message || 'Ошибка постройки структуры' 
+        });
+      }
+    });
+
+    /**
+     * Собрать ресурсы со структуры
+     */
+    socket.on(SocketEvent.SYSTEM_COLLECT_RESOURCES, async (data: {
+      coordinates: HexCoordinates;
+      structureId: string;
+    }) => {
+      try {
+        const result = await gameWorld.collectResources(
+          socket.data.userId,
+          data.coordinates,
+          data.structureId
+        );
+
+        if (result.success) {
+          socket.emit(SocketEvent.SYSTEM_COLLECT_SUCCESS, {
+            resources: result.resources,
+            structure: result.structure,
+          });
+
+          // Отправить обновленную систему
+          const system = await gameWorld.getPlanetarySystem(data.coordinates);
+          if (system) {
+            socket.emit(SocketEvent.SYSTEM_DATA, { system });
+          }
+        } else {
+          socket.emit(SocketEvent.SYSTEM_COLLECT_ERROR, { 
+            message: result.error || 'Ошибка сбора ресурсов' 
+          });
+        }
+      } catch (error: any) {
+        console.error('❌ Ошибка сбора ресурсов:', error);
+        socket.emit(SocketEvent.SYSTEM_COLLECT_ERROR, { 
+          message: error.message || 'Ошибка сбора ресурсов' 
+        });
+      }
+    });
+
+    /**
      * Отключение
      */
     socket.on('disconnect', async () => {
