@@ -1,6 +1,6 @@
 import { Middleware } from '@reduxjs/toolkit';
 import { socketService } from '../../services/socketService';
-import { setGameState, setConnected } from '../slices/gameSlice';
+import { setGameState, updateMap, setConnected } from '../slices/gameSlice';
 import {
   setCurrentPlayer,
   setPlayers,
@@ -67,6 +67,12 @@ export const setupSocketListeners = (store: any) => {
       if (data.type === 'timers' && data.timers) {
         store.dispatch(updatePlayerTimers(data.timers));
       }
+      
+      // Обновление карты при колонизации или развитии
+      if ((data.type === 'colony_created' || data.type === 'colony_developed') && data.map) {
+        console.log(`🏛️ Обновление карты: ${data.type}`, data);
+        store.dispatch(updateMap(data.map));
+      }
     });
 
     socket.on(SocketEvent.PLAYER_JOIN, (data: any) => {
@@ -81,6 +87,24 @@ export const setupSocketListeners = (store: any) => {
 
     socket.on(SocketEvent.PLAYERS_LIST, (data: any) => {
       store.dispatch(setPlayers(data.players));
+    });
+
+    socket.on(SocketEvent.COLONIZE_SUCCESS, (data: any) => {
+      console.log('✅ Система колонизирована:', data.coordinates);
+    });
+
+    socket.on(SocketEvent.COLONIZE_ERROR, (data: any) => {
+      console.error('❌ Ошибка колонизации:', data.message);
+      alert(`Ошибка: ${data.message}`);
+    });
+
+    socket.on(SocketEvent.DEVELOP_SUCCESS, (data: any) => {
+      console.log('✅ Колония развита:', data.coordinates, 'threat:', data.threat);
+    });
+
+    socket.on(SocketEvent.DEVELOP_ERROR, (data: any) => {
+      console.error('❌ Ошибка развития:', data.message);
+      alert(`Ошибка: ${data.message}`);
     });
 
     socket.on(SocketEvent.COMBAT_START, (data: any) => {

@@ -47,7 +47,6 @@ export interface HexCell {
   resources?: number;       // Ресурсы в секторе
   discoveredBy?: string[];  // Кто открыл этот сектор
   hasStation?: boolean;     // Есть ли станция в системе
-  controlStrength?: number; // Сила контроля для пользовательских колоний (минимум 0.1)
   lastDecayCheck?: number;  // Время последней проверки деградации (timestamp)
   
   // Старое поле для обратной совместимости (deprecated)

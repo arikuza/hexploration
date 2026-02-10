@@ -27,6 +27,10 @@ const gameSlice = createSlice({
       state.phase = action.payload.phase;
       state.map = action.payload.map;
     },
+    updateMap: (state, action: PayloadAction<any>) => {
+      // Обновить только карту, не трогая остальное состояние
+      state.map = action.payload;
+    },
     updateGameState: (_state, _action: PayloadAction<any>) => {
       // Обновления игрового состояния (если понадобятся)
     },
@@ -36,5 +40,5 @@ const gameSlice = createSlice({
   },
 });
 
-export const { setGameState, updateGameState, setConnected } = gameSlice.actions;
+export const { setGameState, updateMap, updateGameState, setConnected } = gameSlice.actions;
 export default gameSlice.reducer;

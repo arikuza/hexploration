@@ -9,6 +9,8 @@ import { dirname } from 'path';
 import { authRouter } from './routes/auth.js';
 import { gameRouter } from './routes/game.js';
 import { setupGameSocket } from './socket/gameSocket.js';
+import { connectDatabase } from './database/connection.js';
+import { gameWorld } from './game/GameWorld.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -59,10 +61,27 @@ if (process.env.NODE_ENV === 'production') {
   });
 }
 
-// Setup Socket.io
-setupGameSocket(io);
+// Запуск сервера
+async function startServer() {
+  try {
+    // 1. Подключиться к MongoDB
+    await connectDatabase();
 
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Сервер запущен на порту ${PORT}`);
-  console.log(`🌐 Client URL: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
-});
+    // 2. Инициализировать игровой мир (загрузить из БД или создать новый)
+    await gameWorld.initialize();
+
+    // 3. Настроить Socket.io
+    setupGameSocket(io);
+
+    // 4. Запустить HTTP сервер
+    httpServer.listen(PORT, () => {
+      console.log(`🚀 Сервер запущен на порту ${PORT}`);
+      console.log(`🌐 Client URL: ${process.env.CLIENT_URL || 'http://localhost:5173'}`);
+    });
+  } catch (error) {
+    console.error('❌ Ошибка запуска сервера:', error);
+    process.exit(1);
+  }
+}
+
+startServer();

@@ -7,7 +7,7 @@ export const MAP_RADIUS = 100;
 export const HEX_SIZE = 25; // Размер гекса в пикселях для рендеринга
 
 // Игровой процесс
-export const MOVE_COOLDOWN = 15000; // 15 секунд между перемещениями
+export const MOVE_COOLDOWN = 3000; // 3 секунды между перемещениями
 export const MAX_MOVEMENT_DISTANCE = 1; // Максимум 1 гекс за одно перемещение
 
 // Бой

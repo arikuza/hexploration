@@ -2,11 +2,9 @@ import { Router } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
+import { User } from '../database/models/User.js';
 
 const router = Router();
-
-// Временное хранилище пользователей (в production использовать БД)
-const users = new Map<string, { id: string; username: string; password: string }>();
 
 /**
  * Регистрация
@@ -28,7 +26,7 @@ router.post('/register', async (req, res) => {
     }
 
     // Проверка, что username не занят
-    const existingUser = Array.from(users.values()).find(u => u.username === username);
+    const existingUser = await User.findOne({ username });
     if (existingUser) {
       return res.status(409).json({ error: 'Username уже занят' });
     }
@@ -37,11 +35,13 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, 10);
     const userId = uuidv4();
 
-    users.set(userId, {
-      id: userId,
+    // Создать пользователя в БД
+    const user = new User({
+      userId,
       username,
-      password: hashedPassword,
+      passwordHash: hashedPassword,
     });
+    await user.save();
 
     // Создание JWT токена
     const token = jwt.sign(
@@ -74,21 +74,25 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ error: 'Требуются username и password' });
     }
 
-    // Поиск пользователя
-    const user = Array.from(users.values()).find(u => u.username === username);
+    // Поиск пользователя в БД
+    const user = await User.findOne({ username });
     if (!user) {
       return res.status(401).json({ error: 'Неверные credentials' });
     }
 
     // Проверка пароля
-    const validPassword = await bcrypt.compare(password, user.password);
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
       return res.status(401).json({ error: 'Неверные credentials' });
     }
 
+    // Обновить время последнего входа
+    user.lastLogin = new Date();
+    await user.save();
+
     // Создание JWT токена
     const token = jwt.sign(
-      { userId: user.id, username: user.username },
+      { userId: user.userId, username: user.username },
       process.env.JWT_SECRET || 'default-secret',
       { expiresIn: '7d' }
     );
@@ -96,7 +100,7 @@ router.post('/login', async (req, res) => {
     res.json({
       token,
       user: {
-        id: user.id,
+        id: user.userId,
         username: user.username,
       },
     });

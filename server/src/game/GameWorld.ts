@@ -11,6 +11,8 @@ import { HexMapManager } from './HexMap.js';
 import { CombatSystem } from './CombatSystem.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Server } from 'socket.io';
+import { GameWorldService } from '../database/services/GameWorldService.js';
+import { PlayerService } from '../database/services/PlayerService.js';
 
 class GameWorld {
   private state: GameState;
@@ -18,6 +20,8 @@ class GameWorld {
   private combatSystem: CombatSystem;
   private timerInterval: NodeJS.Timeout | null = null;
   private io: Server | null = null;
+  private saveInterval: NodeJS.Timeout | null = null;
+  private initialized: boolean = false;
 
   constructor() {
     this.hexMap = new HexMapManager(MAP_RADIUS);
@@ -29,8 +33,51 @@ class GameWorld {
       players: new Map(),
       phase: GamePhase.LOBBY,
     };
+  }
+
+  /**
+   * Инициализировать мир (загрузить из БД или создать новый)
+   */
+  async initialize(): Promise<void> {
+    if (this.initialized) {
+      return;
+    }
+
+    console.log('🌍 Инициализация мира...');
+
+    // Загрузить мир из БД
+    const savedWorld = await GameWorldService.loadWorld();
+    
+    if (savedWorld) {
+      // Восстановить мир из БД
+      this.state.phase = savedWorld.phase;
+      this.hexMap = new HexMapManager(savedWorld.map.radius, savedWorld.map);
+      this.state.map = this.hexMap.getMap();
+      console.log('✅ Мир восстановлен из БД');
+    } else {
+      console.log('✅ Создан новый мир');
+    }
 
     this.startTimerUpdates();
+    this.startAutoSave();
+    this.initialized = true;
+  }
+
+  /**
+   * Запустить автосохранение каждые 30 секунд
+   */
+  private startAutoSave(): void {
+    this.saveInterval = setInterval(async () => {
+      await this.saveWorld();
+    }, 30000); // 30 секунд
+  }
+
+  /**
+   * Сохранить состояние мира
+   */
+  async saveWorld(): Promise<void> {
+    await GameWorldService.saveWorld(this.state.phase, this.hexMap.getMap());
+    await PlayerService.saveAllPlayers(this.state.players);
   }
 
   /**
@@ -78,26 +125,44 @@ class GameWorld {
   /**
    * Добавить игрока в игру
    */
-  addPlayer(userId: string, username: string): Player {
-    // Создать корабль для игрока
-    const ship: Ship = this.createDefaultShip();
+  async addPlayer(userId: string, username: string): Promise<Player> {
+    // Попробовать загрузить данные игрока из БД
+    const savedPlayer = await PlayerService.loadPlayer(userId);
 
-    // Стартовая позиция - немного разнести игроков
-    const playerCount = this.state.players.size;
-    const startPosition: HexCoordinates = this.getStartPosition(playerCount);
+    let player: Player;
 
-    const player: Player = {
-      id: userId,
-      username,
-      position: startPosition,
-      ship,
-      resources: 100,
-      experience: 0,
-      level: 1,
-      online: true,
-      moveTimer: 0,        // Может двигаться сразу
-      canMove: true,
-    };
+    if (savedPlayer) {
+      // Восстановить прогресс игрока
+      player = {
+        ...savedPlayer,
+        id: userId,
+        name: username,
+        username,
+        online: true,
+        moveTimer: 0,
+        canMove: true,
+      } as Player;
+      console.log(`👤 Игрок ${username} восстановлен из БД`);
+    } else {
+      // Создать нового игрока
+      const ship: Ship = this.createDefaultShip();
+      const playerCount = this.state.players.size;
+      const startPosition: HexCoordinates = this.getStartPosition(playerCount);
+
+      player = {
+        id: userId,
+        username,
+        position: startPosition,
+        ship,
+        resources: 100,
+        experience: 0,
+        level: 1,
+        online: true,
+        moveTimer: 0,
+        canMove: true,
+      };
+      console.log(`👤 Создан новый игрок ${username}`);
+    }
 
     this.state.players.set(userId, player);
 
@@ -232,7 +297,7 @@ class GameWorld {
   /**
    * Колонизировать систему
    */
-  colonizeSystem(playerId: string, coordinates: HexCoordinates): { success: boolean; error?: string } {
+  async colonizeSystem(playerId: string, coordinates: HexCoordinates): Promise<{ success: boolean; error?: string }> {
     const player = this.state.players.get(playerId);
     if (!player) {
       return { success: false, error: 'Игрок не найден' };
@@ -243,13 +308,20 @@ class GameWorld {
       return { success: false, error: 'Вы должны находиться в системе для колонизации' };
     }
 
-    return this.hexMap.colonizeSystem(coordinates, playerId);
+    const result = this.hexMap.colonizeSystem(coordinates, playerId);
+    
+    if (result.success) {
+      // Сохранить изменения
+      await this.saveWorld();
+    }
+
+    return result;
   }
 
   /**
    * Развить колонию
    */
-  developColony(playerId: string, coordinates: HexCoordinates): { success: boolean; error?: string } {
+  async developColony(playerId: string, coordinates: HexCoordinates): Promise<{ success: boolean; error?: string }> {
     const player = this.state.players.get(playerId);
     if (!player) {
       return { success: false, error: 'Игрок не найден' };
@@ -260,7 +332,14 @@ class GameWorld {
       return { success: false, error: 'Вы должны находиться в колонии для её развития' };
     }
 
-    return this.hexMap.developColony(coordinates, playerId);
+    const result = this.hexMap.developColony(coordinates, playerId);
+
+    if (result.success) {
+      // Сохранить изменения
+      await this.saveWorld();
+    }
+
+    return result;
   }
 
   /**

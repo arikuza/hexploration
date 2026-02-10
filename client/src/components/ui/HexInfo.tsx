@@ -118,13 +118,6 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
                 </div>
               )}
               
-              {hexCell.controlStrength !== undefined && (
-                <div className="info-row">
-                  <span className="info-label">Сила контроля:</span>
-                  <span className="info-value">{hexCell.controlStrength.toFixed(1)}</span>
-                </div>
-              )}
-              
               {hexCell.resources && hexCell.resources > 0 && (
                 <div className="info-row">
                   <span className="info-label">Ресурсы:</span>
@@ -177,10 +170,10 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex }) => {
               </button>
             )}
             
-            {/* Кнопка развития - доступна если система принадлежит игроку */}
-            {hexCell?.owner === currentPlayer?.id && hexCell?.controlStrength !== undefined && (
+            {/* Кнопка развития: +0.1 к угрозе (макс 1), только своя колония */}
+            {hexCell?.owner === currentPlayer?.id && hexCell?.hasStation && hexCell.threat < 1 && (
               <button className="develop-button" onClick={handleDevelop}>
-                📈 Развить колонию (+0.1 СС)
+                📈 Развить колонию (+0.1 к угрозе)
               </button>
             )}
           </div>

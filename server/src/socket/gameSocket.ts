@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { gameWorld } from '../game/GameWorld.js';
 import { SocketEvent, HexCoordinates } from '@hexploration/shared';
+import { PlayerService } from '../database/services/PlayerService.js';
 
 interface AuthToken {
   userId: string;
@@ -37,11 +38,11 @@ export function setupGameSocket(io: Server): void {
     }
   });
 
-  io.on('connection', (socket: Socket) => {
+  io.on('connection', async (socket: Socket) => {
     console.log(`✅ Игрок подключился: ${socket.data.username} (${socket.data.userId})`);
 
     // Добавить игрока в игру
-    const player = gameWorld.addPlayer(socket.data.userId, socket.data.username);
+    const player = await gameWorld.addPlayer(socket.data.userId, socket.data.username);
 
     // Отправить успешную аутентификацию
     socket.emit(SocketEvent.AUTH_SUCCESS, { player });
@@ -90,10 +91,10 @@ export function setupGameSocket(io: Server): void {
     /**
      * Колонизировать систему
      */
-    socket.on(SocketEvent.COLONIZE, (data: { coordinates: HexCoordinates }) => {
+    socket.on(SocketEvent.COLONIZE, async (data: { coordinates: HexCoordinates }) => {
       console.log(`🏛️ ${socket.data.username} пытается колонизировать [${data.coordinates.q}, ${data.coordinates.r}]`);
       
-      const result = gameWorld.colonizeSystem(socket.data.userId, data.coordinates);
+      const result = await gameWorld.colonizeSystem(socket.data.userId, data.coordinates);
 
       if (result.success) {
         socket.emit(SocketEvent.COLONIZE_SUCCESS, { coordinates: data.coordinates });
@@ -123,16 +124,16 @@ export function setupGameSocket(io: Server): void {
     /**
      * Развить колонию
      */
-    socket.on(SocketEvent.DEVELOP_COLONY, (data: { coordinates: HexCoordinates }) => {
+    socket.on(SocketEvent.DEVELOP_COLONY, async (data: { coordinates: HexCoordinates }) => {
       console.log(`📈 ${socket.data.username} развивает колонию [${data.coordinates.q}, ${data.coordinates.r}]`);
       
-      const result = gameWorld.developColony(socket.data.userId, data.coordinates);
+      const result = await gameWorld.developColony(socket.data.userId, data.coordinates);
 
       if (result.success) {
         const cell = gameWorld.getHexMap().getCell(data.coordinates);
         socket.emit(SocketEvent.DEVELOP_SUCCESS, { 
           coordinates: data.coordinates,
-          controlStrength: cell?.controlStrength,
+          threat: cell?.threat,
         });
         
         // Уведомить всех об обновлении карты
@@ -141,7 +142,7 @@ export function setupGameSocket(io: Server): void {
           type: 'colony_developed',
           coordinates: data.coordinates,
           playerId: socket.data.userId,
-          controlStrength: cell?.controlStrength,
+          threat: cell?.threat,
           map: {
             radius: state.map.radius,
             cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
@@ -151,7 +152,7 @@ export function setupGameSocket(io: Server): void {
           },
         });
         
-        console.log(`✅ Колония [${data.coordinates.q}, ${data.coordinates.r}] развита до СС=${cell?.controlStrength}`);
+        console.log(`✅ Колония [${data.coordinates.q}, ${data.coordinates.r}] развита до threat=${cell?.threat}`);
       } else {
         socket.emit(SocketEvent.DEVELOP_ERROR, { message: result.error });
         console.log(`❌ Не удалось развить колонию: ${result.error}`);
@@ -305,8 +306,15 @@ export function setupGameSocket(io: Server): void {
     /**
      * Отключение
      */
-    socket.on('disconnect', () => {
+    socket.on('disconnect', async () => {
       console.log(`❌ Игрок отключился: ${socket.data.username}`);
+      
+      // Сохранить игрока перед удалением
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (player) {
+        await PlayerService.savePlayer(player);
+      }
+      
       gameWorld.removePlayer(socket.data.userId);
 
       // Уведомить всех об отключении

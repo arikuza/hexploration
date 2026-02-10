@@ -4,12 +4,18 @@ import { hexInRadius, hexKey, hexDistance } from '@hexploration/shared';
 export class HexMapManager {
   private map: HexMap;
 
-  constructor(radius: number) {
-    this.map = {
-      cells: new Map(),
-      radius,
-    };
-    this.generateMap();
+  constructor(radius: number, existingMap?: HexMap) {
+    if (existingMap) {
+      // Восстановить карту из БД
+      this.map = existingMap;
+    } else {
+      // Создать новую карту
+      this.map = {
+        cells: new Map(),
+        radius,
+      };
+      this.generateMap();
+    }
   }
 
   /**
@@ -73,25 +79,25 @@ export class HexMapManager {
   }
 
   /**
-   * Вычислить влияние станции на гекс с учетом базового threat станции
+   * Вычислить влияние станции на гекс с учетом базового threat станции.
+   * @param distance - расстояние до станции
+   * @param stationThreat - уровень угрозы станции (0.5..1.0)
+   * @param overrideMaxInfluence - если задан, используется как радиус влияния (для колоний — не меньше центральной)
    */
-  private calculateThreatFromStation(distance: number, stationThreat: number): number {
+  private calculateThreatFromStation(distance: number, stationThreat: number, overrideMaxInfluence?: number): number {
     if (distance === 0) return stationThreat;
-    
-    // Дальность влияния зависит от security status станции
-    const maxInfluence = stationThreat === 1.0 ? 10 : 6; // Станция 1.0 влияет дальше
-    const unknownZone = maxInfluence + 15; // +15 гексов до полностью неизвестного космоса
-    
+
+    const defaultMax = stationThreat === 1.0 ? 10 : 6;
+    const maxInfluence = overrideMaxInfluence ?? defaultMax;
+    const unknownZone = maxInfluence + 15;
+
     if (distance <= maxInfluence) {
-      // Зона влияния: линейное падение от stationThreat до -1.0
-      const normalized = distance / maxInfluence; // 0 -> 1
+      const normalized = distance / maxInfluence;
       return stationThreat - normalized * (stationThreat + 1.0);
     } else if (distance <= unknownZone) {
-      // Неисследованный космос: от -1.0 до -2.0
-      const normalized = (distance - maxInfluence) / (unknownZone - maxInfluence); // 0 -> 1
-      return -1.0 - normalized * 1.0; // -1.0 -> -2.0
+      const normalized = (distance - maxInfluence) / (unknownZone - maxInfluence);
+      return -1.0 - normalized * 1.0;
     } else {
-      // За пределами - полностью неизвестный космос
       return -2.0;
     }
   }
@@ -154,11 +160,11 @@ export class HexMapManager {
       return { success: false, error: 'Система под влиянием других фракций' };
     }
 
-    // Колонизировать
+    // Колонизировать: задаём начальный уровень угрозы (влияние колонии)
     cell.systemType = SystemType.PLANETARY;
     cell.owner = playerId;
     cell.hasStation = true;
-    cell.controlStrength = 1.0; // Начальная сила контроля
+    cell.threat = 0.5; // Начальный уровень угрозы (безопасности), макс по кнопке — 1
     cell.lastDecayCheck = Date.now();
 
     // Пересчитать влияние на соседние системы
@@ -168,7 +174,7 @@ export class HexMapManager {
   }
 
   /**
-   * Развить колонию (увеличить СС)
+   * Развить колонию: +0.1 к уровню угрозы (макс 1)
    */
   developColony(coordinates: HexCoordinates, playerId: string): { success: boolean; error?: string } {
     const cell = this.getCell(coordinates);
@@ -176,76 +182,98 @@ export class HexMapManager {
       return { success: false, error: 'Система не найдена' };
     }
 
-    // Проверить, что система принадлежит игроку
     if (cell.owner !== playerId) {
       return { success: false, error: 'Это не ваша колония' };
     }
 
-    // Проверить, что это колония
-    if (!cell.controlStrength) {
+    if (!cell.hasStation || cell.owner === 'npc') {
       return { success: false, error: 'Это не колония' };
     }
 
-    // Увеличить силу контроля
-    cell.controlStrength = Math.min(10.0, cell.controlStrength + 0.1);
+    // Повысить уровень угрозы (влияния), не выше 1
+    cell.threat = Math.min(1.0, cell.threat + 0.1);
 
-    // Пересчитать влияние
     this.updateInfluenceFromColony(coordinates);
 
     return { success: true };
   }
 
   /**
-   * Обновить влияние от колонии на окружающие системы
+   * Пересчитать влияние от всех источников (NPC станции + все колонии игроков).
+   * Надежный метод: пересчитывает всё заново, гарантируя корректный максимум.
    */
-  private updateInfluenceFromColony(colonyCoords: HexCoordinates): void {
-    const colony = this.getCell(colonyCoords);
-    if (!colony || !colony.controlStrength) return;
+  private recalculateAllInfluences(): void {
+    // Координаты NPC станций (как при генерации карты)
+    const npcStations: Array<{ coords: HexCoordinates; threat: number }> = [
+      { coords: { q: 0, r: 0 }, threat: 1.0 },
+      { coords: { q: 0, r: -7 }, threat: 0.5 },
+    ];
 
-    const maxInfluence = Math.floor(colony.controlStrength * 2); // Дальность влияния зависит от СС
-
-    // Обновить threat для всех гексов в радиусе влияния
+    // Найти все колонии игроков
+    const playerColonies: Array<{ coords: HexCoordinates; threat: number }> = [];
     this.map.cells.forEach((cell) => {
-      // Не обновлять NPC станции и другие колонии
+      if (cell.hasStation && cell.owner && cell.owner !== 'npc') {
+        playerColonies.push({
+          coords: cell.coordinates,
+          threat: cell.threat,
+        });
+      }
+    });
+
+    // Для каждой ячейки (кроме самих станций) пересчитать threat как максимум от всех источников
+    this.map.cells.forEach((cell) => {
+      // Не пересчитываем для станций и колоний (они имеют свой базовый threat)
       if (cell.hasStation && cell.owner) return;
 
-      const distance = hexDistance(colonyCoords, cell.coordinates);
-      if (distance > 0 && distance <= maxInfluence) {
-        // Вычислить влияние от этой колонии
-        const influence = this.calculateThreatFromStation(distance, colony.controlStrength! / 10); // Нормализовать к [0, 1]
-        
-        // Обновить threat только если влияние больше текущего
-        if (influence > cell.threat) {
-          cell.threat = influence;
-        }
+      const influences: number[] = [];
+
+      // Влияние от всех NPC станций
+      npcStations.forEach((npc) => {
+        const distance = hexDistance(npc.coords, cell.coordinates);
+        influences.push(this.calculateThreatFromStation(distance, npc.threat));
+      });
+
+      // Влияние от всех колоний игроков
+      playerColonies.forEach((colony) => {
+        const distance = hexDistance(colony.coords, cell.coordinates);
+        const formulaMaxInfluence = colony.threat >= 0.99 ? 10 : 6;
+        influences.push(this.calculateThreatFromStation(distance, colony.threat, formulaMaxInfluence));
+      });
+
+      // Берём максимум по всем источникам
+      if (influences.length > 0) {
+        cell.threat = Math.max(...influences);
       }
     });
   }
 
   /**
-   * Проверить деградацию всех колоний
+   * Обновить влияние от колонии (вызывает полный пересчёт всех влияний).
+   */
+  private updateInfluenceFromColony(colonyCoords: HexCoordinates): void {
+    // Просто пересчитываем всё заново — это надежнее
+    this.recalculateAllInfluences();
+  }
+
+  /**
+   * Деградация колоний: раз в 5 минут −0.1 к threat при наличии красных зон рядом (мин. 0.1)
    */
   checkColonyDecay(): void {
     const now = Date.now();
     const decayInterval = 5 * 60 * 1000; // 5 минут
 
     this.map.cells.forEach((cell) => {
-      // Проверяем только пользовательские колонии
-      if (!cell.controlStrength || !cell.owner || cell.owner === 'npc') return;
+      if (!cell.hasStation || !cell.owner || cell.owner === 'npc') return;
       if (!cell.lastDecayCheck) cell.lastDecayCheck = now;
 
-      // Проверяем, прошло ли 5 минут
       if (now - cell.lastDecayCheck < decayInterval) return;
 
-      // Проверяем наличие красных зон рядом (threat < -0.5)
       const hasNearbyDanger = this.checkNearbyDanger(cell.coordinates);
 
       if (hasNearbyDanger) {
-        // Деградация: -0.1 к СС
-        cell.controlStrength = Math.max(0.1, cell.controlStrength - 0.1);
-        
-        // Обновить влияние
-        this.updateInfluenceFromColony(cell.coordinates);
+        cell.threat = Math.max(0.1, cell.threat - 0.1);
+        // Пересчитать влияние от всех источников после деградации
+        this.recalculateAllInfluences();
       }
 
       cell.lastDecayCheck = now;
