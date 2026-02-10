@@ -8,7 +8,8 @@
     "bot": "ts-node-dev --respawn --transpile-only --esm src/bot/testBot.ts",
     "build": "tsc",
     "start": "node dist/server.js",
-    "reset-db": "ts-node --esm src/scripts/reset-db.ts"
+    "reset-db": "ts-node --esm src/scripts/reset-db.ts",
+    "reset-db-standalone": "ts-node --esm src/scripts/reset-db-standalone.ts"
   },
   "dependencies": {
     "@hexploration/shared": "*",
