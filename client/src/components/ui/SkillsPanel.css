@@ -180,6 +180,8 @@
   background: rgba(255, 255, 255, 0.1);
   border-radius: 4px;
   font-size: 11px;
+  color: #e0e0e0;
+  border: 1px solid transparent;
 }
 
 .skills-panel__skill-levels .level.done {
@@ -188,17 +190,36 @@
 }
 
 .skills-panel__skill-levels .level.next {
+  background: rgba(255, 255, 255, 0.1) !important;
+  color: #e0e0e0 !important;
   box-shadow: 0 0 0 1px #4caf50;
+  border-color: rgba(76, 175, 80, 0.5);
 }
 
 .skills-panel__skill-actions select {
   padding: 2px 6px;
-  background: rgba(255, 255, 255, 0.1);
+  background: rgba(20, 30, 48, 0.95);
   border: 1px solid rgba(100, 150, 255, 0.3);
   border-radius: 4px;
   color: #e0e0e0;
   font-size: 12px;
   cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+}
+
+.skills-panel__skill-actions select option {
+  background: rgba(20, 30, 48, 0.95) !important;
+  color: #e0e0e0 !important;
+  padding: 4px 8px;
+}
+
+.skills-panel__skill-actions select option:hover,
+.skills-panel__skill-actions select option:focus,
+.skills-panel__skill-actions select option:checked {
+  background: rgba(100, 150, 255, 0.3) !important;
+  color: #fff !important;
 }
 
 .skills-panel-container::-webkit-scrollbar {

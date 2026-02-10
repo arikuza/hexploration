@@ -68,13 +68,65 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
 
   let progress = 0;
   let required = 1;
+  let remainingSeconds = 0;
+  let progressPercent = 0;
   if (currentTraining) {
     const skill = SKILLS_BY_ID[currentTraining.skillId];
     const currentLevel = levels[currentTraining.skillId] ?? 0;
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:73',message:'Training data received',data:{currentTraining,skillExists:!!skill,currentLevel,levels},timestamp:Date.now(),runId:'debug3',hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    
     if (skill) {
       required = getSpRequiredForLevels(skill, currentLevel, currentTraining.targetLevel);
-      const elapsedMs = Date.now() - currentTraining.startTime;
-      progress = (elapsedMs / 3600000) * skill.spPerHour;
+      const now = Date.now();
+      const elapsedMs = now - currentTraining.startTime;
+      
+      // Если startTime в будущем (отрицательный elapsedMs), это означает что сервер уже применил прогресс
+      // и обновил startTime. В этом случае прогресс = 0, а оставшееся время рассчитывается от startTime
+      if (elapsedMs < 0) {
+        // Сервер уже применил прогресс, startTime обновлен на будущее
+        // Показываем прогресс как 0% и рассчитываем время до начала обучения
+        progress = 0;
+        progressPercent = 0;
+        const waitSeconds = Math.ceil(-elapsedMs / 1000);
+        remainingSeconds = waitSeconds + (required * 3600 / skill.spPerHour);
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:87',message:'StartTime in future',data:{skillId:currentTraining.skillId,currentLevel,targetLevel:currentTraining.targetLevel,startTime:currentTraining.startTime,now,elapsedMs,waitSeconds,required,spPerHour:skill.spPerHour},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+      } else {
+        // Нормальный случай: startTime в прошлом
+        const progressRaw = (elapsedMs / 3600000) * skill.spPerHour;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:95',message:'Normal progress calculation',data:{skillId:currentTraining.skillId,currentLevel,targetLevel:currentTraining.targetLevel,startTime:currentTraining.startTime,now,elapsedMs,progressRaw,required,spPerHour:skill.spPerHour},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
+        
+        // Ограничиваем прогресс от 0 до required
+        progress = Math.max(0, Math.min(progressRaw, required));
+        
+        // Вычисляем процент (0-100)
+        progressPercent = required > 0 ? (progress / required) * 100 : 0;
+        progressPercent = Math.max(0, Math.min(100, progressPercent));
+        
+        // Вычисляем оставшееся время в секундах
+        // Оставшееся SP = required - progress
+        // Время = (оставшиеся SP) / (SP в секунду) = (required - progress) / (spPerHour / 3600)
+        const remainingSp = Math.max(0, required - progress);
+        remainingSeconds = skill.spPerHour > 0 
+          ? Math.ceil((remainingSp * 3600) / skill.spPerHour)
+          : 0;
+        
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:110',message:'After clamping',data:{progressRaw,progress,progressPercent,remainingSp,remainingSeconds,required},timestamp:Date.now(),runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
+        // #endregion
+      }
+    } else {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:103',message:'Skill not found',data:{skillId:currentTraining.skillId},timestamp:Date.now(),runId:'debug3',hypothesisId:'D'})}).catch(()=>{});
+      // #endregion
     }
   }
 
@@ -119,10 +171,10 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
               <div className="skills-panel__progress-bar">
                 <div
                   className="skills-panel__progress-fill"
-                  style={{ width: `${Math.min(100, (progress / required) * 100)}%` }}
+                  style={{ width: `${progressPercent}%` }}
                 />
               </div>
-              <small>{(progress / required * 100).toFixed(0)}% (~{Math.max(0, Math.ceil((required - progress) / 60))} с)</small>
+              <small>{progressPercent.toFixed(0)}% (~{remainingSeconds} с)</small>
             </div>
             {queue.length > 1 && (
               <ul className="skills-panel__queue-list">
