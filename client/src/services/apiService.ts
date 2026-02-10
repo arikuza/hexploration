@@ -21,6 +21,20 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Обработка ошибок
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response) {
+      return Promise.reject(error);
+    } else if (error.request) {
+      return Promise.reject(new Error('Сервер не отвечает'));
+    } else {
+      return Promise.reject(error);
+    }
+  }
+);
+
 /**
  * Сервис аутентификации
  */

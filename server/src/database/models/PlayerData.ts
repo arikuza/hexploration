@@ -1,5 +1,5 @@
 import mongoose, { Schema, Document } from 'mongoose';
-import { HexCoordinates, Ship } from '@hexploration/shared';
+import { HexCoordinates, Ship, PlayerSkills } from '@hexploration/shared';
 
 export interface IPlayerData extends Document {
   userId: string;
@@ -10,6 +10,7 @@ export interface IPlayerData extends Document {
   experience: number;
   level: number;
   lastPlayed: Date;
+  skills?: PlayerSkills;
 }
 
 const PlayerDataSchema = new Schema<IPlayerData>({
@@ -27,25 +28,8 @@ const PlayerDataSchema = new Schema<IPlayerData>({
     r: { type: Number, required: true },
   },
   ship: {
-    id: String,
-    name: String,
-    type: String,
-    health: Number,
-    maxHealth: Number,
-    energy: Number,
-    maxEnergy: Number,
-    speed: Number,
-    turnRate: Number,
-    weapons: [{
-      id: String,
-      name: String,
-      type: String,
-      damage: Number,
-      energyCost: Number,
-      cooldown: Number,
-      projectileSpeed: Number,
-      range: Number,
-    }],
+    type: Schema.Types.Mixed,
+    required: false,
   },
   resources: {
     type: Number,
@@ -62,6 +46,10 @@ const PlayerDataSchema = new Schema<IPlayerData>({
   lastPlayed: {
     type: Date,
     default: Date.now,
+  },
+  skills: {
+    type: Schema.Types.Mixed,
+    required: false,
   },
 });
 

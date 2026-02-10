@@ -32,6 +32,9 @@ import { Server } from 'socket.io';
 import { GameWorldService } from '../database/services/GameWorldService.js';
 import { PlayerService } from '../database/services/PlayerService.js';
 import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
+import { recalcPlayerSkills, setSkillQueue as setSkillQueueImpl, createEmptySkills } from './SkillSystem.js';
+import type { PlayerSkills } from '@hexploration/shared';
+import type { SkillQueueItem } from '@hexploration/shared';
 
 class GameWorld {
   private state: GameState;
@@ -98,6 +101,7 @@ class GameWorld {
 
   /**
    * Сохранить состояние мира
+   * Навыки уже пересчитаны в реальном времени в updatePlayerTimers, просто сохраняем текущее состояние
    */
   async saveWorld(): Promise<void> {
     await GameWorldService.saveWorld(this.state.phase, this.hexMap.getMap());
@@ -119,11 +123,16 @@ class GameWorld {
   }
 
   /**
-   * Обновить таймеры всех игроков
+   * Обновить таймеры всех игроков и пересчитать навыки в реальном времени
    */
   private updatePlayerTimers(): void {
     const now = Date.now();
     this.state.players.forEach((player) => {
+      // Пересчитать навыки в реальном времени
+      if (player.skills?.currentTraining) {
+        player.skills = recalcPlayerSkills(player.skills, now);
+      }
+
       if (player.moveTimer > now) {
         // Таймер еще не истек
         player.canMove = false;
@@ -150,13 +159,10 @@ class GameWorld {
    * Добавить игрока в игру
    */
   async addPlayer(userId: string, username: string): Promise<Player> {
-    // Попробовать загрузить данные игрока из БД
     const savedPlayer = await PlayerService.loadPlayer(userId);
-
     let player: Player;
 
     if (savedPlayer) {
-      // Восстановить прогресс игрока
       player = {
         ...savedPlayer,
         id: userId,
@@ -166,13 +172,10 @@ class GameWorld {
         moveTimer: 0,
         canMove: true,
       } as Player;
-      console.log(`👤 Игрок ${username} восстановлен из БД`);
     } else {
-      // Создать нового игрока
       const ship: Ship = this.createDefaultShip();
       const playerCount = this.state.players.size;
       const startPosition: HexCoordinates = this.getStartPosition(playerCount);
-
       player = {
         id: userId,
         username,
@@ -184,8 +187,8 @@ class GameWorld {
         online: true,
         moveTimer: 0,
         canMove: true,
+        skills: createEmptySkills(),
       };
-      console.log(`👤 Создан новый игрок ${username}`);
     }
 
     this.state.players.set(userId, player);
@@ -302,6 +305,32 @@ class GameWorld {
    */
   getPlayer(playerId: string): Player | undefined {
     return this.state.players.get(playerId);
+  }
+
+  /**
+   * Получить актуальные навыки игрока (с пересчётом по реальному времени)
+   */
+  getPlayerSkills(playerId: string): PlayerSkills | null {
+    const player = this.state.players.get(playerId);
+    if (!player) return null;
+    const skills = player.skills ?? createEmptySkills();
+    const recalc = recalcPlayerSkills(skills, Date.now());
+    player.skills = recalc;
+    return recalc;
+  }
+
+  /**
+   * Установить очередь обучения навыков
+   */
+  setPlayerSkillQueue(playerId: string, queue: SkillQueueItem[]): { skills: PlayerSkills; error?: string } {
+    const player = this.state.players.get(playerId);
+    if (!player) return { skills: createEmptySkills(), error: 'Игрок не найден' };
+    const skills = player.skills ?? createEmptySkills();
+    const now = Date.now();
+    const recalc = recalcPlayerSkills(skills, now);
+    const result = setSkillQueueImpl(recalc, queue, now);
+    player.skills = result.skills;
+    return result;
   }
 
   /**

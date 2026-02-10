@@ -144,4 +144,10 @@ export enum SocketEvent {
   SYSTEM_COLLECT_RESOURCES = 'system:collect_resources',
   SYSTEM_COLLECT_SUCCESS = 'system:collect:success',
   SYSTEM_COLLECT_ERROR = 'system:collect:error',
+
+  // Навыки (Eve-like)
+  SKILLS_GET = 'skills:get',
+  SKILLS_DATA = 'skills:data',
+  SKILLS_QUEUE_SET = 'skills:queue:set',
+  SKILLS_ERROR = 'skills:error',
 }

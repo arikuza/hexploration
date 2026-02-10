@@ -1,4 +1,5 @@
 import { HexCoordinates } from './hex.types.js';
+import type { PlayerSkills } from './skill.types.js';
 
 /**
  * Данные игрока
@@ -14,6 +15,8 @@ export interface Player {
   online: boolean;
   moveTimer: number;        // Время до следующего хода (в миллисекундах)
   canMove: boolean;         // Может ли сейчас двигаться
+  /** Навыки (Eve-like), опционально */
+  skills?: PlayerSkills;
 }
 
 /**

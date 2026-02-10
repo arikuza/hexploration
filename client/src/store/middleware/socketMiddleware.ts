@@ -8,6 +8,7 @@ import {
   removePlayer,
   updatePlayerPosition,
   updatePlayerTimers,
+  setCurrentPlayerSkills,
 } from '../slices/playerSlice';
 import { startCombat, updateCombat, setCombatResult } from '../slices/combatSlice';
 import { SocketEvent } from '@hexploration/shared';
@@ -34,6 +35,10 @@ export const setupSocketListeners = (store: any) => {
     socket.on(SocketEvent.AUTH_SUCCESS, (data: any) => {
       console.log('Аутентификация успешна:', data);
       store.dispatch(setCurrentPlayer(data.player));
+      // Явно обновить навыки при подключении
+      if (data.player?.skills) {
+        store.dispatch(setCurrentPlayerSkills(data.player.skills));
+      }
     });
 
     socket.on(SocketEvent.GAME_STATE, (data: any) => {
@@ -133,6 +138,15 @@ export const setupSocketListeners = (store: any) => {
       console.log('🤖 Бой завершен, победитель:', data.winner);
       // Сохраняем результат вместо немедленного закрытия
       store.dispatch(setCombatResult({ winner: data.winner, combat: data.combat }));
+    });
+
+    socket.on(SocketEvent.SKILLS_DATA, (data: { skills: any }) => {
+      store.dispatch(setCurrentPlayerSkills(data.skills));
+    });
+
+    socket.on(SocketEvent.SKILLS_ERROR, (data: { message?: string }) => {
+      console.error('Ошибка навыков:', data.message);
+      if (data.message) alert(data.message);
     });
   });
 };

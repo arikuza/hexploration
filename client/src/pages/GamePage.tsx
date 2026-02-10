@@ -4,6 +4,8 @@ import HexGrid from '../components/game/HexGrid';
 import GameHUD from '../components/ui/GameHUD';
 import PlayerList from '../components/ui/PlayerList';
 import { ThreatLegend } from '../components/ui/ThreatLegend';
+import { SkillsPanel } from '../components/ui/SkillsPanel';
+import { IconPanel } from '../components/ui/IconPanel';
 import { HexInfo } from '../components/ui/HexInfo';
 import { CombatView } from '../components/combat/CombatView';
 import { PlanetarySystemView } from '../components/planetary/PlanetarySystemView';
@@ -17,6 +19,7 @@ function GamePage() {
   const { inCombat } = useAppSelector((state) => state.combat);
   const [selectedHex, setSelectedHex] = useState<HexCoordinates | null>(null);
   const [planetarySystemHex, setPlanetarySystemHex] = useState<HexCoordinates | null>(null);
+  const [showSkillsPanel, setShowSkillsPanel] = useState(false);
 
   // Автоматически выбрать гекс текущего игрока при загрузке
   useEffect(() => {
@@ -49,6 +52,24 @@ function GamePage() {
         <ThreatLegend />
         <PlayerList />
       </div>
+      <div className="icon-panel-container">
+        <IconPanel
+          icons={[
+            {
+              id: 'skills',
+              icon: '⚡',
+              label: 'Навыки',
+              onClick: () => setShowSkillsPanel(!showSkillsPanel),
+            },
+            // Здесь можно добавить другие иконки в будущем
+          ]}
+        />
+      </div>
+      {showSkillsPanel && (
+        <div className="skills-panel-container">
+          <SkillsPanel onClose={() => setShowSkillsPanel(false)} />
+        </div>
+      )}
       <HexInfo selectedHex={selectedHex} onOpenPlanetarySystem={setPlanetarySystemHex} />
       
       {/* Модальное окно планетарной системы — на уровне GamePage, поверх всего */}

@@ -42,3 +42,10 @@
   gap: 16px;
   z-index: 10;
 }
+
+.icon-panel-container {
+  position: fixed;
+  top: 100px;
+  right: 320px;
+  z-index: 10;
+}

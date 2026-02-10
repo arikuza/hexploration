@@ -8,7 +8,7 @@ export async function connectDatabase(): Promise<void> {
   
   try {
     await mongoose.connect(mongoUri);
-    console.log('✅ MongoDB подключена:', mongoUri.replace(/\/\/.*@/, '//***@')); // Скрыть пароль в логах
+    console.log('✅ MongoDB подключена:', mongoUri.replace(/\/\/.*@/, '//***@'));
   } catch (error) {
     console.error('❌ Ошибка подключения к MongoDB:', error);
     throw error;

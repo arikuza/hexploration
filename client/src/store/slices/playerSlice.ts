@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Player } from '@hexploration/shared';
+import { Player, PlayerSkills } from '@hexploration/shared';
 
 interface PlayerState {
   currentPlayer: Player | null;
@@ -77,6 +77,11 @@ const playerSlice = createSlice({
         }
       });
     },
+    setCurrentPlayerSkills: (state, action: PayloadAction<PlayerSkills | null>) => {
+      if (state.currentPlayer) {
+        state.currentPlayer.skills = action.payload ?? undefined;
+      }
+    },
   },
 });
 
@@ -87,5 +92,6 @@ export const {
   removePlayer,
   updatePlayerPosition,
   updatePlayerTimers,
+  setCurrentPlayerSkills,
 } = playerSlice.actions;
 export default playerSlice.reducer;

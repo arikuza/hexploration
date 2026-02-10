@@ -57,9 +57,12 @@ router.post('/register', async (req, res) => {
         username,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Ошибка регистрации:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    const message = error?.message?.includes('Mongo') 
+      ? 'Ошибка подключения к базе данных'
+      : 'Ошибка сервера';
+    res.status(500).json({ error: message });
   }
 });
 
@@ -104,9 +107,12 @@ router.post('/login', async (req, res) => {
         username: user.username,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Ошибка входа:', error);
-    res.status(500).json({ error: 'Ошибка сервера' });
+    const message = error?.message?.includes('Mongo')
+      ? 'Ошибка подключения к базе данных'
+      : 'Ошибка сервера';
+    res.status(500).json({ error: message });
   }
 });
 

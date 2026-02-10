@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only --esm src/server.ts",
+    "dev": "node --loader ts-node/esm --watch src/server.ts",
     "bot": "ts-node-dev --respawn --transpile-only --esm src/bot/testBot.ts",
     "build": "tsc",
     "start": "node dist/server.js"

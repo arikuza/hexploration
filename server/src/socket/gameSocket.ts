@@ -1,6 +1,7 @@
 import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { gameWorld } from '../game/GameWorld.js';
+import { getEffectiveShip } from '../game/SkillBonus.js';
 import { SocketEvent, HexCoordinates } from '@hexploration/shared';
 import { PlayerService } from '../database/services/PlayerService.js';
 
@@ -39,9 +40,6 @@ export function setupGameSocket(io: Server): void {
   });
 
   io.on('connection', async (socket: Socket) => {
-    console.log(`✅ Игрок подключился: ${socket.data.username} (${socket.data.userId})`);
-
-    // Добавить игрока в игру
     const player = await gameWorld.addPlayer(socket.data.userId, socket.data.username);
 
     // Отправить успешную аутентификацию
@@ -64,11 +62,16 @@ export function setupGameSocket(io: Server): void {
     /**
      * Движение игрока
      */
-    socket.on(SocketEvent.MOVE, (data: { target: HexCoordinates }) => {
-      const success = gameWorld.movePlayer(socket.data.userId, data.target);
+    socket.on(SocketEvent.MOVE, async (data: { target: HexCoordinates }) => {
+      const userId = socket.data.userId;
+      const success = gameWorld.movePlayer(userId, data.target);
 
       if (success) {
-        const player = gameWorld.getPlayer(socket.data.userId);
+        const player = gameWorld.getPlayer(userId);
+        if (player) {
+          const saved = await PlayerService.savePlayer(player);
+          if (!saved) console.error(`[MOVE] Не удалось сохранить userId=${userId}`);
+        }
         socket.emit(SocketEvent.MOVE_SUCCESS, { 
           position: player?.position,
           moveTimer: player?.moveTimer,
@@ -78,7 +81,7 @@ export function setupGameSocket(io: Server): void {
         // Уведомить всех об обновлении
         io.emit(SocketEvent.GAME_UPDATE, {
           type: 'player_moved',
-          playerId: socket.data.userId,
+          playerId: userId,
           position: player?.position,
           moveTimer: player?.moveTimer,
           canMove: player?.canMove,
@@ -173,9 +176,11 @@ export function setupGameSocket(io: Server): void {
         return;
       }
 
-      // Начать бой
+      // Начать бой (с учётом бонусов навыков)
       const combatSystem = gameWorld.getCombatSystem();
-      const combat = combatSystem.startCombat([attacker, target]);
+      const attackerWithShip = { ...attacker, ship: getEffectiveShip(attacker) };
+      const targetWithShip = { ...target, ship: getEffectiveShip(target) };
+      const combat = combatSystem.startCombat([attackerWithShip, targetWithShip]);
 
       // Уведомить обоих игроков
       const attackerSocket = Array.from(io.sockets.sockets.values()).find(s => s.data.userId === socket.data.userId);
@@ -227,9 +232,10 @@ export function setupGameSocket(io: Server): void {
         return;
       }
 
-      // Начать бой с ботом
+      // Начать бой с ботом (с учётом бонусов навыков игрока)
       const combatSystem = gameWorld.getCombatSystem();
-      const combat = combatSystem.startCombatWithBot(player);
+      const playerWithShip = { ...player, ship: getEffectiveShip(player) };
+      const combat = combatSystem.startCombatWithBot(playerWithShip);
 
       // Уведомить игрока
       socket.emit('combat:started', { combat });
@@ -408,13 +414,48 @@ export function setupGameSocket(io: Server): void {
     });
 
     /**
+     * Навыки: запрос актуального состояния
+     */
+    socket.on(SocketEvent.SKILLS_GET, () => {
+      const skills = gameWorld.getPlayerSkills(socket.data.userId);
+      socket.emit(SocketEvent.SKILLS_DATA, { skills: skills ?? null });
+    });
+
+    /**
+     * Навыки: установить очередь обучения
+     */
+    socket.on(SocketEvent.SKILLS_QUEUE_SET, async (data: { queue: { skillId: string; targetLevel: number }[] }) => {
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (!player) {
+        socket.emit(SocketEvent.SKILLS_ERROR, { message: 'Игрок не найден' });
+        return;
+      }
+
+      const queue = (data?.queue ?? []).map((item: any) => ({
+        skillId: String(item.skillId),
+        targetLevel: Number(item.targetLevel),
+        startTime: 0,
+      }));
+      const result = gameWorld.setPlayerSkillQueue(socket.data.userId, queue);
+
+      if (result.error) {
+        socket.emit(SocketEvent.SKILLS_ERROR, { message: result.error });
+      } else {
+        const updatedPlayer = gameWorld.getPlayer(socket.data.userId);
+        if (updatedPlayer) {
+          const saved = await PlayerService.savePlayer(updatedPlayer);
+          if (!saved) console.error(`[SKILLS] Не удалось сохранить userId=${socket.data.userId}`);
+        }
+        socket.emit(SocketEvent.SKILLS_DATA, { skills: result.skills });
+      }
+    });
+
+    /**
      * Отключение
      */
     socket.on('disconnect', async () => {
-      console.log(`❌ Игрок отключился: ${socket.data.username}`);
-      
-      // Сохранить игрока перед удалением
-      const player = gameWorld.getPlayer(socket.data.userId);
+      const userId = socket.data.userId;
+      const player = gameWorld.getPlayer(userId);
       if (player) {
         await PlayerService.savePlayer(player);
       }
@@ -454,16 +495,18 @@ function serializeGameState(state: any) {
  * Сериализация игрока
  */
 function serializePlayer(player: any) {
+  const ship = getEffectiveShip(player);
   return {
     id: player.id,
     username: player.username,
     position: player.position,
-    ship: player.ship,
+    ship,
     resources: player.resources,
     experience: player.experience,
     level: player.level,
     online: player.online,
     moveTimer: player.moveTimer,
     canMove: player.canMove,
+    skills: player.skills ?? null,
   };
 }
