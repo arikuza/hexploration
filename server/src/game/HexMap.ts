@@ -264,16 +264,37 @@ export class HexMapManager {
 
     this.map.cells.forEach((cell) => {
       if (!cell.hasStation || !cell.owner || cell.owner === 'npc') return;
-      if (!cell.lastDecayCheck) cell.lastDecayCheck = now;
+      
+      // Инициализировать lastDecayCheck если его нет
+      if (!cell.lastDecayCheck) {
+        cell.lastDecayCheck = now;
+        console.log(`🕐 Инициализация проверки деградации для колонии [${cell.coordinates.q}, ${cell.coordinates.r}] (threat=${cell.threat.toFixed(2)})`);
+        return; // Пропустить первую проверку, дать время накопить интервал
+      }
 
-      if (now - cell.lastDecayCheck < decayInterval) return;
+      // Проверить, прошло ли 5 минут
+      const timeSinceLastCheck = now - cell.lastDecayCheck;
+      const minutesPassed = Math.floor(timeSinceLastCheck / 60000);
+      
+      if (timeSinceLastCheck < decayInterval) {
+        // Логируем только раз в минуту, чтобы не спамить
+        if (minutesPassed > 0 && minutesPassed % 1 === 0) {
+          console.log(`⏳ Колония [${cell.coordinates.q}, ${cell.coordinates.r}]: прошло ${minutesPassed} мин из 5 (threat=${cell.threat.toFixed(2)})`);
+        }
+        return; // Ещё не прошло 5 минут
+      }
 
+      console.log(`🔍 Проверка деградации для колонии [${cell.coordinates.q}, ${cell.coordinates.r}] (прошло ${minutesPassed} мин, threat=${cell.threat.toFixed(2)})`);
       const hasNearbyDanger = this.checkNearbyDanger(cell.coordinates);
 
       if (hasNearbyDanger) {
+        const oldThreat = cell.threat;
         cell.threat = Math.max(0.1, cell.threat - 0.1);
+        console.log(`📉 Деградация колонии [${cell.coordinates.q}, ${cell.coordinates.r}]: threat ${oldThreat.toFixed(2)} → ${cell.threat.toFixed(2)}`);
         // Пересчитать влияние от всех источников после деградации
         this.recalculateAllInfluences();
+      } else {
+        console.log(`✅ Колония [${cell.coordinates.q}, ${cell.coordinates.r}] безопасна, деградации нет (threat=${cell.threat.toFixed(2)})`);
       }
 
       cell.lastDecayCheck = now;
@@ -281,19 +302,43 @@ export class HexMapManager {
   }
 
   /**
-   * Проверить наличие опасных зон рядом
+   * Проверить наличие опасных зон рядом (threat < -0.5)
    */
   private checkNearbyDanger(coordinates: HexCoordinates): boolean {
-    const radius = 3; // Проверяем в радиусе 3 гексов
+    const radius = 5; // Увеличиваем радиус проверки до 5 гексов
     const hexes = hexInRadius(coordinates, radius);
+    const nearbyThreats: Array<{ q: number; r: number; threat: number; distance: number }> = [];
+    let foundDanger = false;
 
     for (const hex of hexes) {
+      // Пропустить сам центр (колонию)
+      if (hex.q === coordinates.q && hex.r === coordinates.r) continue;
+      
       const cell = this.getCell(hex);
-      if (cell && cell.threat < -0.5) {
-        return true; // Есть опасная зона рядом
+      if (cell) {
+        const distance = hexDistance(coordinates, hex);
+        nearbyThreats.push({ q: hex.q, r: hex.r, threat: cell.threat, distance });
+        if (cell.threat < -0.5) {
+          console.log(`⚠️ Найдена опасная зона рядом с колонией [${coordinates.q}, ${coordinates.r}]: гекс [${hex.q}, ${hex.r}] на расстоянии ${distance} имеет threat=${cell.threat.toFixed(2)}`);
+          foundDanger = true;
+        }
       }
     }
 
-    return false;
+    // Логируем все гексы в радиусе для отладки (только опасные или все, если их немного)
+    if (nearbyThreats.length > 0) {
+      const dangerousHexes = nearbyThreats.filter(h => h.threat < -0.5);
+      if (dangerousHexes.length > 0) {
+        const threatsStr = dangerousHexes.map(h => `[${h.q},${h.r}]:${h.threat.toFixed(2)}@${h.distance}]`).join(', ');
+        console.log(`🔍 Опасные зоны рядом с колонией [${coordinates.q}, ${coordinates.r}]: ${threatsStr}`);
+      } else {
+        // Показываем минимальные threat значения для отладки
+        const minThreats = nearbyThreats.sort((a, b) => a.threat - b.threat).slice(0, 5);
+        const threatsStr = minThreats.map(h => `[${h.q},${h.r}]:${h.threat.toFixed(2)}@${h.distance}`).join(', ');
+        console.log(`🔍 Минимальные threat рядом с колонией [${coordinates.q}, ${coordinates.r}]: ${threatsStr}`);
+      }
+    }
+
+    return foundDanger;
   }
 }
