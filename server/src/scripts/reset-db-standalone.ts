@@ -32,6 +32,7 @@ async function resetDatabase() {
     if (!collections || collections.length === 0) {
       console.log('ℹ️  База данных уже пуста');
     } else {
+      // Сначала удаляем все документы из коллекций
       for (const collection of collections) {
         try {
           const collectionName = collection.name;
@@ -64,6 +65,17 @@ async function resetDatabase() {
       }
     } catch (error) {
       console.log('ℹ️  Ошибка при удалении коллекций:', error);
+    }
+    
+    // Дополнительно: удаляем всю базу данных для полной очистки
+    console.log('\n🔥 Полная очистка базы данных...');
+    try {
+      await mongoose.connection.db?.dropDatabase();
+      console.log('✅ База данных полностью удалена');
+    } catch (error: any) {
+      if (error.codeName !== 'NamespaceNotFound') {
+        console.error('❌ Ошибка при удалении базы данных:', error.message);
+      }
     }
     
     console.log('\n✅ База данных успешно очищена!');
