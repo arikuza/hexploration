@@ -1,9 +1,20 @@
 /* Existing styles... */
 
-.icon-panel-container {
+.right-panels {
   position: fixed;
   top: 100px;
   right: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  z-index: 5;
+  max-width: 300px;
+}
+
+.icon-panel-container {
+  position: fixed;
+  top: 100px;
+  right: 340px;
   z-index: 10;
 }
 
