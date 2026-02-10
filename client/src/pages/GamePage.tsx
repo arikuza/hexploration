@@ -9,6 +9,7 @@ import { IconPanel } from '../components/ui/IconPanel';
 import { HexInfo } from '../components/ui/HexInfo';
 import { CombatView } from '../components/combat/CombatView';
 import { PlanetarySystemView } from '../components/planetary/PlanetarySystemView';
+import StationPanel from '../components/station/StationPanel';
 import { HexCoordinates } from '@hexploration/shared';
 import './GamePage.css';
 import '../components/ui/HexInfo.css';
@@ -20,6 +21,7 @@ function GamePage() {
   const [selectedHex, setSelectedHex] = useState<HexCoordinates | null>(null);
   const [planetarySystemHex, setPlanetarySystemHex] = useState<HexCoordinates | null>(null);
   const [showSkillsPanel, setShowSkillsPanel] = useState(false);
+  const [openStationId, setOpenStationId] = useState<string | null>(null);
 
   // Автоматически выбрать гекс текущего игрока при загрузке
   useEffect(() => {
@@ -70,7 +72,11 @@ function GamePage() {
           <SkillsPanel onClose={() => setShowSkillsPanel(false)} />
         </div>
       )}
-      <HexInfo selectedHex={selectedHex} onOpenPlanetarySystem={setPlanetarySystemHex} />
+      <HexInfo 
+        selectedHex={selectedHex} 
+        onOpenPlanetarySystem={setPlanetarySystemHex}
+        onOpenStation={setOpenStationId}
+      />
       
       {/* Модальное окно планетарной системы — на уровне GamePage, поверх всего */}
       {planetarySystemHex && (
@@ -87,6 +93,27 @@ function GamePage() {
             <PlanetarySystemView
               coordinates={planetarySystemHex}
               onClose={() => setPlanetarySystemHex(null)}
+              onOpenStation={setOpenStationId}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно станции */}
+      {openStationId && (
+        <div
+          className="station-modal"
+          onClick={() => setOpenStationId(null)}
+          role="dialog"
+          aria-label="Станция"
+        >
+          <div
+            className="station-modal__box"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <StationPanel
+              stationId={openStationId}
+              onClose={() => setOpenStationId(null)}
             />
           </div>
         </div>

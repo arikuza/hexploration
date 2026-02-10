@@ -5,6 +5,7 @@ import {
   Ship,
   ShipType,
   HexCoordinates,
+  SocketEvent,
 } from '@hexploration/shared';
 import {
   StructureType,
@@ -33,6 +34,9 @@ import { GameWorldService } from '../database/services/GameWorldService.js';
 import { PlayerService } from '../database/services/PlayerService.js';
 import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
 import { recalcPlayerSkills, setSkillQueue as setSkillQueueImpl, createEmptySkills } from './SkillSystem.js';
+import { CraftingSystem } from './CraftingSystem.js';
+import { StationStorageService } from '../database/services/StationStorageService.js';
+import { StorageSystem } from './StorageSystem.js';
 import type { PlayerSkills } from '@hexploration/shared';
 import type { SkillQueueItem } from '@hexploration/shared';
 
@@ -153,6 +157,66 @@ class GameWorld {
         }
       }
     });
+
+    // Обновить прогресс крафта
+    this.updateCraftingProgress(now);
+  }
+
+  /**
+   * Обновить прогресс крафта и отправить обновления клиентам
+   */
+  private async updateCraftingProgress(now: number): Promise<void> {
+    if (!this.io) {
+      console.warn('[Crafting] Socket.io не инициализирован, пропускаем обновление прогресса');
+      return;
+    }
+
+    const results = CraftingSystem.updateCraftingProgress(now);
+    
+    if (results.length === 0) {
+      return; // Нет активных задач крафта
+    }
+    
+    console.log(`[Crafting] Обновление прогресса для ${results.length} задач`);
+    
+    for (const { job, completed } of results) {
+      if (completed) {
+        console.log(`[Crafting] Завершение задачи: jobId=${job.id}, playerId=${job.playerId}`);
+        // Завершить крафт
+        const storage = await StationStorageService.loadStorage(job.stationId);
+        if (storage) {
+          CraftingSystem.completeCrafting(job.id, storage);
+          await StationStorageService.saveStorage(storage);
+
+          // Отправить финальное обновление прогресса перед завершением
+          console.log(`[Crafting] Отправка финального прогресса 100% для jobId=${job.id} игроку ${job.playerId}`);
+          this.io.to(job.playerId).emit(SocketEvent.STATION_CRAFT_PROGRESS, {
+            jobId: job.id,
+            stationId: job.stationId,
+            progress: 100,
+          });
+
+          // Отправить уведомление о завершении
+          this.io.to(job.playerId).emit(SocketEvent.STATION_CRAFT_COMPLETE, {
+            jobId: job.id,
+            stationId: job.stationId,
+            storage, // Отправить обновленное хранилище
+          });
+        }
+      } else {
+        // Отправить обновление прогресса для всех незавершенных задач
+        // Отправляем обновления каждые 100ms (как вызывается функция)
+        console.log(`[Crafting] Отправка прогресса: jobId=${job.id}, progress=${job.progress.toFixed(2)}%, playerId=${job.playerId}`);
+        const socketCount = this.io.sockets.adapter.rooms.get(job.playerId)?.size || 0;
+        console.log(`[Crafting] Количество сокетов в комнате ${job.playerId}: ${socketCount}`);
+        
+        this.io.to(job.playerId).emit(SocketEvent.STATION_CRAFT_PROGRESS, {
+          jobId: job.id,
+          stationId: job.stationId,
+          progress: job.progress,
+        });
+      }
+    }
   }
 
   /**
@@ -172,6 +236,20 @@ class GameWorld {
         moveTimer: 0,
         canMove: true,
       } as Player;
+      
+      // Инициализировать трюм с начальными ресурсами, если его нет или он пуст
+      if (!player.ship.cargoHold || player.ship.cargoHold.items.length === 0) {
+        const cargoCapacity = StorageSystem.getCargoCapacity(player.ship.type);
+        player.ship.cargoHold = {
+          capacity: cargoCapacity,
+          items: [
+            { itemId: 'iron_ore', quantity: 50 },
+            { itemId: 'copper_ore', quantity: 50 },
+            { itemId: 'energy_crystal', quantity: 50 },
+            { itemId: 'rare_metal', quantity: 20 },
+          ],
+        };
+      }
     } else {
       const ship: Ship = this.createDefaultShip();
       const playerCount = this.state.players.size;
@@ -221,6 +299,20 @@ class GameWorld {
    */
   private createDefaultShip(): Ship {
     const stats = SHIP_STATS.scout;
+    // Вместимость трюма зависит от типа корабля
+    const cargoCapacity = this.getCargoCapacity(ShipType.SCOUT);
+    
+    // Начальные ресурсы: достаточно для базовых рецептов крафта
+    // RECIPE_ALLOY требует: 10 iron_ore + 3 energy_crystal
+    // RECIPE_ELECTRONICS требует: 5 copper_ore + 2 energy_crystal
+    // RECIPE_COMPOSITE требует: 2 alloy + 1 rare_metal + 5 energy_crystal
+    const initialItems = [
+      { itemId: 'iron_ore', quantity: 50 },
+      { itemId: 'copper_ore', quantity: 50 },
+      { itemId: 'energy_crystal', quantity: 50 },
+      { itemId: 'rare_metal', quantity: 20 },
+    ];
+    
     return {
       id: uuidv4(),
       name: 'Разведчик',
@@ -232,7 +324,24 @@ class GameWorld {
       speed: stats.speed,
       turnRate: stats.turnRate,
       weapons: DEFAULT_WEAPONS,
+      cargoHold: {
+        capacity: cargoCapacity,
+        items: initialItems,
+      },
     };
+  }
+
+  /**
+   * Получить вместимость трюма для типа корабля
+   */
+  private getCargoCapacity(shipType: ShipType): number {
+    const capacities: Record<ShipType, number> = {
+      [ShipType.SCOUT]: 50,      // Маленький трюм
+      [ShipType.FIGHTER]: 100,   // Средний трюм
+      [ShipType.CRUISER]: 200,   // Большой трюм
+      [ShipType.SUPPORT]: 150,   // Средний трюм
+    };
+    return capacities[shipType] ?? 50;
   }
 
   /**
@@ -416,7 +525,44 @@ class GameWorld {
     }
 
     // Загрузить из БД
-    return await PlanetarySystemService.loadByHexKey(cell.planetarySystemId);
+    const system = await PlanetarySystemService.loadByHexKey(cell.planetarySystemId);
+    
+    // Если в гексе есть NPC станция, но её нет в системе - создать
+    if (system && cell.hasStation && cell.owner === 'npc') {
+      const hasStation = system.structures.some(s => s.type === StructureType.SPACE_STATION);
+      if (!hasStation) {
+        const { v4: uuidv4 } = await import('uuid');
+        const { STRUCTURE_COSTS, STRUCTURE_BUILD_TIMES, STRUCTURE_HEALTH } = await import('@hexploration/shared');
+        const hexKeyStr = `${coordinates.q},${coordinates.r}`;
+        
+        const stationStructure = {
+          id: uuidv4(),
+          type: StructureType.SPACE_STATION,
+          ownerId: 'npc',
+          location: { type: 'orbit' as const, targetId: `star-${hexKeyStr}` },
+          cost: STRUCTURE_COSTS[StructureType.SPACE_STATION],
+          buildTime: STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION],
+          buildProgress: 100,
+          buildStartTime: Date.now() - STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION] * 1000,
+          health: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+          maxHealth: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+          operational: true,
+          createdAt: Date.now() - 86400000,
+          storage: {
+            stationId: '',
+            items: [],
+            ships: [],
+            maxShipSlots: 10,
+          },
+          marketOrders: [],
+        };
+        stationStructure.storage.stationId = stationStructure.id;
+        system.structures.push(stationStructure);
+        await PlanetarySystemService.save(system);
+      }
+    }
+    
+    return system;
   }
 
   /**
@@ -483,6 +629,17 @@ class GameWorld {
         maxCapacity: STRUCTURE_CAPACITY[type],
         currentAmount: 0,
       };
+    }
+
+    // Добавить хранилище и торговые ордера для станций
+    if (type === StructureType.SPACE_STATION) {
+      structure.storage = {
+        stationId: structure.id,
+        items: [],
+        ships: [],
+        maxShipSlots: 10, // Максимум 10 кораблей в ангаре
+      };
+      structure.marketOrders = [];
     }
 
     // Списисать ресурсы

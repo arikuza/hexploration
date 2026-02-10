@@ -3,6 +3,7 @@ import gameReducer from './slices/gameSlice';
 import playerReducer from './slices/playerSlice';
 import combatReducer from './slices/combatSlice';
 import authReducer from './slices/authSlice';
+import stationReducer from './slices/stationSlice';
 import { socketMiddleware } from './middleware/socketMiddleware';
 
 export const store = configureStore({
@@ -11,6 +12,7 @@ export const store = configureStore({
     game: gameReducer,
     player: playerReducer,
     combat: combatReducer,
+    station: stationReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

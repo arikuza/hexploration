@@ -1,7 +1,8 @@
-import { HexMap, HexCell, HexType, HexCoordinates, SystemType, THREAT_ZONES } from '@hexploration/shared';
-import { hexInRadius, hexKey, hexDistance } from '@hexploration/shared';
+import { HexMap, HexCell, HexType, HexCoordinates, SystemType, THREAT_ZONES, StructureType } from '@hexploration/shared';
+import { hexInRadius, hexKey, hexDistance, STRUCTURE_COSTS, STRUCTURE_BUILD_TIMES, STRUCTURE_HEALTH } from '@hexploration/shared';
 import { PlanetarySystemGenerator } from './PlanetarySystemGenerator.js';
 import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
+import { v4 as uuidv4 } from 'uuid';
 
 export class HexMapManager {
   private map: HexMap;
@@ -87,6 +88,33 @@ export class HexMapManager {
     const hexKeyStr = hexKey(coordinates);
     const system = PlanetarySystemGenerator.generate(coordinates);
     
+    // Если в гексе есть NPC станция, создать структуру SPACE_STATION
+    if (cell.hasStation && cell.owner === 'npc') {
+      const stationStructure = {
+        id: uuidv4(),
+        type: StructureType.SPACE_STATION,
+        ownerId: 'npc',
+        location: { type: 'orbit' as const, targetId: `star-${hexKeyStr}` },
+        cost: STRUCTURE_COSTS[StructureType.SPACE_STATION],
+        buildTime: STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION],
+        buildProgress: 100,
+        buildStartTime: Date.now() - STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION] * 1000,
+        health: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+        maxHealth: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+        operational: true,
+        createdAt: Date.now() - 86400000, // Создана день назад
+        storage: {
+          stationId: '',
+          items: [],
+          ships: [],
+          maxShipSlots: 10,
+        },
+        marketOrders: [],
+      };
+      stationStructure.storage.stationId = stationStructure.id;
+      system.structures.push(stationStructure);
+    }
+    
     // Сохранить в БД
     await PlanetarySystemService.save(system);
     
@@ -117,14 +145,42 @@ export class HexMapManager {
     console.log(`🌌 Генерация ${systemsToGenerate.length} планетарных систем...`);
 
     // Генерировать все системы
-    const systems = systemsToGenerate.map(({ coordinates, hexKey }) => {
+    const systems = await Promise.all(systemsToGenerate.map(async ({ coordinates, hexKey }) => {
       const system = PlanetarySystemGenerator.generate(coordinates);
       const cell = this.map.cells.get(hexKey);
+      
+      // Если в гексе есть NPC станция, создать структуру SPACE_STATION
+      if (cell?.hasStation && cell.owner === 'npc') {
+        const stationStructure = {
+          id: uuidv4(),
+          type: StructureType.SPACE_STATION,
+          ownerId: 'npc',
+          location: { type: 'orbit' as const, targetId: `star-${hexKey}` },
+          cost: STRUCTURE_COSTS[StructureType.SPACE_STATION],
+          buildTime: STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION],
+          buildProgress: 100,
+          buildStartTime: Date.now() - STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION] * 1000,
+          health: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+          maxHealth: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+          operational: true,
+          createdAt: Date.now() - 86400000, // Создана день назад
+          storage: {
+            stationId: '',
+            items: [],
+            ships: [],
+            maxShipSlots: 10,
+          },
+          marketOrders: [],
+        };
+        stationStructure.storage.stationId = stationStructure.id;
+        system.structures.push(stationStructure);
+      }
+      
       if (cell) {
         cell.planetarySystemId = hexKey;
       }
       return system;
-    });
+    }));
 
     // Сохранить пакетно в БД
     await PlanetarySystemService.saveMany(systems);

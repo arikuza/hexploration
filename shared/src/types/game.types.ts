@@ -150,4 +150,42 @@ export enum SocketEvent {
   SKILLS_DATA = 'skills:data',
   SKILLS_QUEUE_SET = 'skills:queue:set',
   SKILLS_ERROR = 'skills:error',
+  
+  // Станции
+  STATION_OPEN = 'station:open',
+  STATION_DATA = 'station:data',
+  STATION_STORAGE_GET = 'station:storage:get',
+  STATION_STORAGE_DATA = 'station:storage:data',
+  STATION_CARGO_TRANSFER = 'station:cargo:transfer',
+  STATION_CARGO_TRANSFER_SUCCESS = 'station:cargo:transfer:success',
+  STATION_CARGO_TRANSFER_ERROR = 'station:cargo:transfer:error',
+  STATION_SHIP_STORE = 'station:ship:store',
+  STATION_SHIP_STORE_SUCCESS = 'station:ship:store:success',
+  STATION_SHIP_STORE_ERROR = 'station:ship:store:error',
+  STATION_SHIP_RETRIEVE = 'station:ship:retrieve',
+  STATION_SHIP_RETRIEVE_SUCCESS = 'station:ship:retrieve:success',
+  STATION_SHIP_RETRIEVE_ERROR = 'station:ship:retrieve:error',
+  
+  // Крафт
+  STATION_CRAFT_RECIPES_GET = 'station:craft:recipes:get',
+  STATION_CRAFT_RECIPES_DATA = 'station:craft:recipes:data',
+  STATION_CRAFT_START = 'station:craft:start',
+  STATION_CRAFT_START_SUCCESS = 'station:craft:start:success',
+  STATION_CRAFT_START_ERROR = 'station:craft:start:error',
+  STATION_CRAFT_CANCEL = 'station:craft:cancel',
+  STATION_CRAFT_CANCEL_SUCCESS = 'station:craft:cancel:success',
+  STATION_CRAFT_PROGRESS = 'station:craft:progress',
+  STATION_CRAFT_COMPLETE = 'station:craft:complete',
+  
+  // Торговля
+  STATION_MARKET_ORDERS_GET = 'station:market:orders:get',
+  STATION_MARKET_ORDERS_DATA = 'station:market:orders:data',
+  STATION_MARKET_ORDER_CREATE = 'station:market:order:create',
+  STATION_MARKET_ORDER_CREATE_SUCCESS = 'station:market:order:create:success',
+  STATION_MARKET_ORDER_CREATE_ERROR = 'station:market:order:create:error',
+  STATION_MARKET_ORDER_CANCEL = 'station:market:order:cancel',
+  STATION_MARKET_ORDER_CANCEL_SUCCESS = 'station:market:order:cancel:success',
+  STATION_MARKET_ORDER_EXECUTE = 'station:market:order:execute',
+  STATION_MARKET_ORDER_EXECUTE_SUCCESS = 'station:market:order:execute:success',
+  STATION_MARKET_ORDER_EXECUTE_ERROR = 'station:market:order:execute:error',
 }

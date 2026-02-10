@@ -1,4 +1,6 @@
 import { HexCoordinates } from './hex.types.js';
+import type { StationStorage } from './storage.types.js';
+import type { MarketOrder } from './market.types.js';
 
 /**
  * Типы звезд
@@ -219,6 +221,10 @@ export interface SpaceStructure {
   // Метаданные
   name?: string;                     // Имя структуры (задается игроком)
   createdAt: number;                 // Время создания (timestamp)
+  
+  // Хранилище и торговля (только для SPACE_STATION)
+  storage?: StationStorage;          // Хранилище станции (ангар + предметы)
+  marketOrders?: MarketOrder[];      // Торговые ордера на станции
 }
 
 /**

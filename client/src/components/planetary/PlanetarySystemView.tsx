@@ -5,6 +5,7 @@ import {
   PlanetType,
   GasGiantType,
   HexCoordinates,
+  StructureType,
 } from '@hexploration/shared';
 import { SocketEvent } from '@hexploration/shared';
 import { socketService } from '../../services/socketService';
@@ -15,6 +16,7 @@ interface PlanetarySystemViewProps {
   system?: PlanetarySystem | null;
   onClose?: () => void;
   onSystemLoaded?: (system: PlanetarySystem) => void;
+  onOpenStation?: (stationId: string) => void;
 }
 
 /** Цвета звёзд по типу */
@@ -49,6 +51,7 @@ export const PlanetarySystemView: React.FC<PlanetarySystemViewProps> = ({
   system: initialSystem,
   onClose,
   onSystemLoaded,
+  onOpenStation,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [system, setSystem] = useState<PlanetarySystem | null>(initialSystem ?? null);
@@ -293,11 +296,27 @@ export const PlanetarySystemView: React.FC<PlanetarySystemViewProps> = ({
         <h4>
           {system.name || `Система [${coordinates.q}, ${coordinates.r}]`} — {system.star.type}
         </h4>
-        {onClose && (
-          <button type="button" className="planetary-system-view__close" onClick={onClose}>
-            Закрыть
-          </button>
-        )}
+        <div className="planetary-system-view__header-actions">
+          {system.structures?.some(s => s.type === StructureType.SPACE_STATION) && onOpenStation && (
+            <button
+              type="button"
+              className="planetary-system-view__open-station"
+              onClick={() => {
+                const station = system.structures.find(s => s.type === StructureType.SPACE_STATION);
+                if (station) {
+                  onOpenStation(station.id);
+                }
+              }}
+            >
+              🏭 Открыть станцию
+            </button>
+          )}
+          {onClose && (
+            <button type="button" className="planetary-system-view__close" onClick={onClose}>
+              Закрыть
+            </button>
+          )}
+        </div>
       </div>
       <canvas 
         ref={canvasRef}

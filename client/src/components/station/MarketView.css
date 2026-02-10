@@ -1,0 +1,152 @@
+.market-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.market-section {
+  background: #16213e;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.market-section h3 {
+  margin: 0 0 12px 0;
+  color: #4a9eff;
+  font-size: 16px;
+}
+
+.order-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.form-row {
+  position: relative;
+}
+
+.form-row label {
+  min-width: 120px;
+  color: #888;
+  font-size: 14px;
+}
+
+.available-quantity-hint,
+.quantity-hint {
+  margin-left: 8px;
+  color: #4a9eff;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.form-select,
+.form-input {
+  flex: 1;
+  padding: 6px 8px;
+  background: #0f3460;
+  border: 1px solid #16213e;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 14px;
+}
+
+.create-order-btn {
+  padding: 8px 16px;
+  background: #4a9eff;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+  align-self: flex-start;
+}
+
+.create-order-btn:hover {
+  background: #3a8eef;
+}
+
+.order-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.order-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #1a1a2e;
+  border-radius: 4px;
+  border: 1px solid #0f3460;
+}
+
+.order-info {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex: 1;
+}
+
+.order-item {
+  font-weight: 500;
+  color: #eee;
+  min-width: 150px;
+}
+
+.order-price {
+  color: #4a9eff;
+  font-size: 14px;
+}
+
+.order-quantity {
+  color: #888;
+  font-size: 12px;
+}
+
+.order-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.quantity-input {
+  width: 60px;
+  padding: 4px 8px;
+  background: #0f3460;
+  border: 1px solid #16213e;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 14px;
+}
+
+.execute-btn {
+  padding: 6px 12px;
+  background: #4a9eff;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.execute-btn:hover {
+  background: #3a8eef;
+}
+
+.empty-message {
+  padding: 32px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}

@@ -2,8 +2,14 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { gameWorld } from '../game/GameWorld.js';
 import { getEffectiveShip } from '../game/SkillBonus.js';
-import { SocketEvent, HexCoordinates } from '@hexploration/shared';
+import { SocketEvent, HexCoordinates, StructureType, CargoTransfer, OrderType } from '@hexploration/shared';
 import { PlayerService } from '../database/services/PlayerService.js';
+import { StationStorageService } from '../database/services/StationStorageService.js';
+import { StorageSystem } from '../game/StorageSystem.js';
+import { CraftingSystem } from '../game/CraftingSystem.js';
+import { MarketSystem } from '../game/MarketSystem.js';
+import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
+import { RECIPE_REGISTRY } from '@hexploration/shared';
 
 interface AuthToken {
   userId: string;
@@ -41,6 +47,10 @@ export function setupGameSocket(io: Server): void {
 
   io.on('connection', async (socket: Socket) => {
     const player = await gameWorld.addPlayer(socket.data.userId, socket.data.username);
+
+    // Присоединить сокет к комнате с userId для отправки персонализированных сообщений
+    socket.join(socket.data.userId);
+    console.log(`[Socket] Игрок ${socket.data.userId} присоединился к комнате ${socket.data.userId}`);
 
     // Отправить успешную аутентификацию
     socket.emit(SocketEvent.AUTH_SUCCESS, { player });
@@ -447,6 +457,564 @@ export function setupGameSocket(io: Server): void {
           if (!saved) console.error(`[SKILLS] Не удалось сохранить userId=${socket.data.userId}`);
         }
         socket.emit(SocketEvent.SKILLS_DATA, { skills: result.skills });
+      }
+    });
+
+    /**
+     * Станция: открыть интерфейс станции
+     */
+    socket.on(SocketEvent.STATION_OPEN, async (data: { stationId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_DATA, { error: 'Игрок не найден' });
+          return;
+        }
+
+        // Найти структуру станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (!system) {
+          socket.emit(SocketEvent.STATION_DATA, { error: 'Система не найдена' });
+          return;
+        }
+
+        const structure = system.structures.find(s => s.id === data.stationId);
+        if (!structure || structure.type !== StructureType.SPACE_STATION) {
+          socket.emit(SocketEvent.STATION_DATA, { error: 'Станция не найдена' });
+          return;
+        }
+
+        // Убедиться что хранилище существует
+        if (!structure.storage) {
+          structure.storage = await StationStorageService.ensureStorage(structure.id);
+          // Сохранить систему с обновленным хранилищем
+          await PlanetarySystemService.save(system);
+        }
+
+        // Убедиться что marketOrders существует
+        if (!structure.marketOrders) {
+          structure.marketOrders = [];
+          await PlanetarySystemService.save(system);
+        }
+
+        // Получить активные задачи крафта для этой станции
+        const craftingJobs = CraftingSystem.getPlayerCraftingJobs(socket.data.userId, data.stationId);
+
+        socket.emit(SocketEvent.STATION_DATA, {
+          station: structure,
+          cargoHold: StorageSystem.getShipCargo(player),
+          craftingJobs,
+        });
+      } catch (error: any) {
+        console.error('Ошибка открытия станции:', error);
+        socket.emit(SocketEvent.STATION_DATA, { error: error.message || 'Ошибка открытия станции' });
+      }
+    });
+
+    /**
+     * Станция: получить хранилище
+     */
+    socket.on(SocketEvent.STATION_STORAGE_GET, async (data: { stationId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_STORAGE_DATA, { error: 'Игрок не найден' });
+          return;
+        }
+
+        // Убедиться что хранилище существует (создать если нет)
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        
+        // Обновить хранилище в структуре станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (system) {
+          const structure = system.structures.find(s => s.id === data.stationId);
+          if (structure && structure.type === StructureType.SPACE_STATION) {
+            structure.storage = storage;
+            await PlanetarySystemService.save(system);
+          }
+        }
+
+        socket.emit(SocketEvent.STATION_STORAGE_DATA, {
+          storage,
+          cargoHold: StorageSystem.getShipCargo(player),
+        });
+      } catch (error: any) {
+        console.error('Ошибка получения хранилища:', error);
+        socket.emit(SocketEvent.STATION_STORAGE_DATA, { error: error.message || 'Ошибка получения хранилища' });
+      }
+    });
+
+    /**
+     * Станция: перенести грузы
+     */
+    socket.on(SocketEvent.STATION_CARGO_TRANSFER, async (data: { stationId: string; transfers: CargoTransfer[] }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_CARGO_TRANSFER_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        
+        // Выполнить переносы
+        const toStation = data.transfers.filter(t => t.direction === 'to_station');
+        const fromStation = data.transfers.filter(t => t.direction === 'from_station');
+
+        if (toStation.length > 0) {
+          const result = StorageSystem.transferToStation(player, storage, toStation);
+          if (!result.success) {
+            socket.emit(SocketEvent.STATION_CARGO_TRANSFER_ERROR, { message: result.error });
+            return;
+          }
+        }
+
+        if (fromStation.length > 0) {
+          const result = StorageSystem.transferFromStation(player, storage, fromStation);
+          if (!result.success) {
+            socket.emit(SocketEvent.STATION_CARGO_TRANSFER_ERROR, { message: result.error });
+            return;
+          }
+        }
+
+        // Сохранить изменения
+        await StationStorageService.saveStorage(storage);
+        await PlayerService.savePlayer(player);
+
+        // Обновить хранилище в структуре станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (system) {
+          const structure = system.structures.find(s => s.id === data.stationId);
+          if (structure && structure.type === StructureType.SPACE_STATION) {
+            structure.storage = storage;
+            await PlanetarySystemService.save(system);
+          }
+        }
+
+        socket.emit(SocketEvent.STATION_CARGO_TRANSFER_SUCCESS, {
+          storage,
+          cargoHold: StorageSystem.getShipCargo(player),
+        });
+      } catch (error: any) {
+        console.error('Ошибка переноса грузов:', error);
+        socket.emit(SocketEvent.STATION_CARGO_TRANSFER_ERROR, { message: error.message || 'Ошибка переноса грузов' });
+      }
+    });
+
+    /**
+     * Станция: сохранить корабль в ангар
+     */
+    socket.on(SocketEvent.STATION_SHIP_STORE, async (data: { stationId: string; shipId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_SHIP_STORE_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+
+        // Найти корабль (пока только текущий корабль игрока)
+        if (player.ship.id !== data.shipId) {
+          socket.emit(SocketEvent.STATION_SHIP_STORE_ERROR, { message: 'Корабль не найден' });
+          return;
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        const result = StorageSystem.storeShip(player, storage, player.ship);
+
+        if (!result.success) {
+          socket.emit(SocketEvent.STATION_SHIP_STORE_ERROR, { message: result.error });
+          return;
+        }
+
+        await StationStorageService.saveStorage(storage);
+        
+        // Обновить хранилище в структуре станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (system) {
+          const structure = system.structures.find(s => s.id === data.stationId);
+          if (structure && structure.type === StructureType.SPACE_STATION) {
+            structure.storage = storage;
+            await PlanetarySystemService.save(system);
+          }
+        }
+
+        socket.emit(SocketEvent.STATION_SHIP_STORE_SUCCESS, { storage });
+      } catch (error: any) {
+        console.error('Ошибка сохранения корабля:', error);
+        socket.emit(SocketEvent.STATION_SHIP_STORE_ERROR, { message: error.message || 'Ошибка сохранения корабля' });
+      }
+    });
+
+    /**
+     * Станция: извлечь корабль из ангара
+     */
+    socket.on(SocketEvent.STATION_SHIP_RETRIEVE, async (data: { stationId: string; shipId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_SHIP_RETRIEVE_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+
+        const result = StorageSystem.retrieveShip(storage, data.shipId);
+        if (!result.success || !result.ship) {
+          socket.emit(SocketEvent.STATION_SHIP_RETRIEVE_ERROR, { message: result.error });
+          return;
+        }
+
+        await StationStorageService.saveStorage(storage);
+        
+        // Обновить хранилище в структуре станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (system) {
+          const structure = system.structures.find(s => s.id === data.stationId);
+          if (structure && structure.type === StructureType.SPACE_STATION) {
+            structure.storage = storage;
+            await PlanetarySystemService.save(system);
+          }
+        }
+
+        socket.emit(SocketEvent.STATION_SHIP_RETRIEVE_SUCCESS, {
+          ship: result.ship,
+          storage,
+        });
+      } catch (error: any) {
+        console.error('Ошибка извлечения корабля:', error);
+        socket.emit(SocketEvent.STATION_SHIP_RETRIEVE_ERROR, { message: error.message || 'Ошибка извлечения корабля' });
+      }
+    });
+
+    /**
+     * Станция: получить рецепты крафта
+     */
+    socket.on(SocketEvent.STATION_CRAFT_RECIPES_GET, async (data: { stationId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_CRAFT_RECIPES_DATA, { error: 'Игрок не найден' });
+          return;
+        }
+
+        // Найти структуру станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId);
+        const stationType = structure?.type;
+
+        const recipes = Object.values(RECIPE_REGISTRY).filter(recipe => {
+          if (!recipe.stationType || recipe.stationType.length === 0) return true;
+          return stationType && recipe.stationType.includes(stationType);
+        });
+
+        socket.emit(SocketEvent.STATION_CRAFT_RECIPES_DATA, { recipes });
+      } catch (error: any) {
+        console.error('Ошибка получения рецептов:', error);
+        socket.emit(SocketEvent.STATION_CRAFT_RECIPES_DATA, { error: error.message || 'Ошибка получения рецептов' });
+      }
+    });
+
+    /**
+     * Станция: начать крафт
+     */
+    socket.on(SocketEvent.STATION_CRAFT_START, async (data: { stationId: string; recipeId: string; quantity: number }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_CRAFT_START_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        
+        // Проверить возможность крафта
+        const canCraft = CraftingSystem.canCraft(player, data.recipeId, storage, data.quantity);
+        if (!canCraft.canCraft) {
+          socket.emit(SocketEvent.STATION_CRAFT_START_ERROR, { message: canCraft.error });
+          return;
+        }
+
+        // Начать крафт
+        const result = CraftingSystem.startCrafting(
+          socket.data.userId,
+          data.recipeId,
+          data.stationId,
+          storage,
+          data.quantity
+        );
+
+        if (!result.success) {
+          socket.emit(SocketEvent.STATION_CRAFT_START_ERROR, { message: result.error });
+          return;
+        }
+
+        await StationStorageService.saveStorage(storage);
+        
+        // Обновить хранилище в структуре станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (system) {
+          const structure = system.structures.find(s => s.id === data.stationId);
+          if (structure && structure.type === StructureType.SPACE_STATION) {
+            structure.storage = storage;
+            await PlanetarySystemService.save(system);
+          }
+        }
+
+        // Получить созданную задачу крафта
+        let job = null;
+        if (result.jobId) {
+          job = CraftingSystem.getCraftingProgress(result.jobId);
+          // Отправить начальное обновление прогресса
+          if (job) {
+            socket.emit(SocketEvent.STATION_CRAFT_PROGRESS, {
+              jobId: job.id,
+              stationId: job.stationId,
+              progress: job.progress,
+            });
+          }
+        }
+        
+        socket.emit(SocketEvent.STATION_CRAFT_START_SUCCESS, {
+          jobId: result.jobId,
+          job: job,
+          storage,
+        });
+      } catch (error: any) {
+        console.error('Ошибка начала крафта:', error);
+        socket.emit(SocketEvent.STATION_CRAFT_START_ERROR, { message: error.message || 'Ошибка начала крафта' });
+      }
+    });
+
+    /**
+     * Станция: отменить крафт
+     */
+    socket.on(SocketEvent.STATION_CRAFT_CANCEL, async (data: { stationId: string; jobId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_CRAFT_CANCEL_SUCCESS, { error: 'Игрок не найден' });
+          return;
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+
+        const result = CraftingSystem.cancelCrafting(data.jobId, storage);
+        if (!result.success) {
+          socket.emit(SocketEvent.STATION_CRAFT_CANCEL_SUCCESS, { error: result.error });
+          return;
+        }
+
+        await StationStorageService.saveStorage(storage);
+        
+        // Обновить хранилище в структуре станции
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        if (system) {
+          const structure = system.structures.find(s => s.id === data.stationId);
+          if (structure && structure.type === StructureType.SPACE_STATION) {
+            structure.storage = storage;
+            await PlanetarySystemService.save(system);
+          }
+        }
+
+        socket.emit(SocketEvent.STATION_CRAFT_CANCEL_SUCCESS, { storage });
+      } catch (error: any) {
+        console.error('Ошибка отмены крафта:', error);
+        socket.emit(SocketEvent.STATION_CRAFT_CANCEL_SUCCESS, { error: error.message || 'Ошибка отмены крафта' });
+      }
+    });
+
+    /**
+     * Станция: получить торговые ордера
+     */
+    socket.on(SocketEvent.STATION_MARKET_ORDERS_GET, async (data: { stationId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDERS_DATA, { error: 'Игрок не найден' });
+          return;
+        }
+
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId);
+        
+        if (!structure || !structure.marketOrders) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDERS_DATA, { orders: [] });
+          return;
+        }
+
+        MarketSystem.checkExpiredOrders(structure.marketOrders);
+        const activeOrders = MarketSystem.getActiveOrders(data.stationId, structure.marketOrders);
+
+        socket.emit(SocketEvent.STATION_MARKET_ORDERS_DATA, { orders: activeOrders });
+      } catch (error: any) {
+        console.error('Ошибка получения ордеров:', error);
+        socket.emit(SocketEvent.STATION_MARKET_ORDERS_DATA, { error: error.message || 'Ошибка получения ордеров' });
+      }
+    });
+
+    /**
+     * Станция: создать торговый ордер
+     */
+    socket.on(SocketEvent.STATION_MARKET_ORDER_CREATE, async (data: {
+      stationId: string;
+      type: OrderType;
+      itemId: string;
+      price: number;
+      quantity: number;
+      expiresAt?: number;
+    }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_CREATE_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId);
+        
+        if (!structure) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_CREATE_ERROR, { message: 'Станция не найдена' });
+          return;
+        }
+
+        if (!structure.marketOrders) {
+          structure.marketOrders = [];
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+
+        // Для ордеров на продажу проверить наличие предметов
+        if (data.type === OrderType.SELL) {
+          const stack = storage.items.find(s => s.itemId === data.itemId);
+          if (!stack || stack.quantity < data.quantity) {
+            socket.emit(SocketEvent.STATION_MARKET_ORDER_CREATE_ERROR, {
+              message: `Недостаточно предметов на станции: требуется ${data.quantity}, есть ${stack?.quantity ?? 0}`,
+            });
+            return;
+          }
+        }
+
+        const result = MarketSystem.createOrder(
+          socket.data.userId,
+          data.stationId,
+          data.type,
+          data.itemId,
+          data.price,
+          data.quantity,
+          data.expiresAt
+        );
+
+        if (!result.success || !result.order) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_CREATE_ERROR, { message: result.error });
+          return;
+        }
+
+        structure.marketOrders.push(result.order);
+        
+        // Обновить хранилище в структуре станции
+        if (structure.type === StructureType.SPACE_STATION) {
+          structure.storage = storage;
+        }
+        
+        await PlanetarySystemService.save(system!);
+        await StationStorageService.saveStorage(storage);
+
+        socket.emit(SocketEvent.STATION_MARKET_ORDER_CREATE_SUCCESS, { order: result.order });
+      } catch (error: any) {
+        console.error('Ошибка создания ордера:', error);
+        socket.emit(SocketEvent.STATION_MARKET_ORDER_CREATE_ERROR, { message: error.message || 'Ошибка создания ордера' });
+      }
+    });
+
+    /**
+     * Станция: отменить торговый ордер
+     */
+    socket.on(SocketEvent.STATION_MARKET_ORDER_CANCEL, async (data: { stationId: string; orderId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_CANCEL_SUCCESS, { error: 'Игрок не найден' });
+          return;
+        }
+
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId);
+        
+        if (!structure || !structure.marketOrders) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_CANCEL_SUCCESS, { error: 'Станция не найдена' });
+          return;
+        }
+
+        const result = MarketSystem.cancelOrder(data.orderId, socket.data.userId, structure.marketOrders);
+        if (!result.success) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_CANCEL_SUCCESS, { error: result.error });
+          return;
+        }
+
+        await PlanetarySystemService.save(system!);
+        socket.emit(SocketEvent.STATION_MARKET_ORDER_CANCEL_SUCCESS, {});
+      } catch (error: any) {
+        console.error('Ошибка отмены ордера:', error);
+        socket.emit(SocketEvent.STATION_MARKET_ORDER_CANCEL_SUCCESS, { error: error.message || 'Ошибка отмены ордера' });
+      }
+    });
+
+    /**
+     * Станция: выполнить торговый ордер
+     */
+    socket.on(SocketEvent.STATION_MARKET_ORDER_EXECUTE, async (data: {
+      stationId: string;
+      orderId: string;
+      quantity: number;
+    }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_EXECUTE_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId);
+        
+        if (!structure || !structure.marketOrders) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_EXECUTE_ERROR, { message: 'Станция не найдена' });
+          return;
+        }
+
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        const result = MarketSystem.executeOrder(
+          socket.data.userId,
+          data.orderId,
+          data.quantity,
+          player,
+          storage,
+          structure.marketOrders
+        );
+
+        if (!result.success) {
+          socket.emit(SocketEvent.STATION_MARKET_ORDER_EXECUTE_ERROR, { message: result.error });
+          return;
+        }
+
+        // Обновить хранилище в структуре станции
+        if (structure.type === StructureType.SPACE_STATION) {
+          structure.storage = storage;
+        }
+        
+        await PlanetarySystemService.save(system!);
+        await StationStorageService.saveStorage(storage);
+        await PlayerService.savePlayer(player);
+
+        socket.emit(SocketEvent.STATION_MARKET_ORDER_EXECUTE_SUCCESS, {
+          order: structure.marketOrders.find(o => o.id === data.orderId),
+          playerResources: player.resources,
+        });
+      } catch (error: any) {
+        console.error('Ошибка выполнения ордера:', error);
+        socket.emit(SocketEvent.STATION_MARKET_ORDER_EXECUTE_ERROR, { message: error.message || 'Ошибка выполнения ордера' });
       }
     });
 

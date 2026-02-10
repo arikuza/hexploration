@@ -1,0 +1,202 @@
+.crafting-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.crafting-section {
+  background: #16213e;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.crafting-section h3 {
+  margin: 0 0 12px 0;
+  color: #4a9eff;
+  font-size: 16px;
+}
+
+.recipe-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.recipe-card {
+  background: #1a1a2e;
+  border: 2px solid #0f3460;
+  border-radius: 4px;
+  padding: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.recipe-card:hover {
+  border-color: #4a9eff;
+  background: #1f1f3e;
+}
+
+.recipe-card.selected {
+  border-color: #4a9eff;
+  background: #1f1f3e;
+}
+
+.recipe-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.recipe-header h4 {
+  margin: 0;
+  color: #4a9eff;
+  font-size: 14px;
+}
+
+.recipe-time {
+  color: #888;
+  font-size: 12px;
+}
+
+.recipe-description {
+  color: #aaa;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.recipe-inputs,
+.recipe-output {
+  margin-top: 8px;
+}
+
+.recipe-label {
+  color: #888;
+  font-size: 11px;
+  margin-bottom: 4px;
+}
+
+.recipe-item {
+  color: #eee;
+  font-size: 12px;
+  margin-left: 8px;
+}
+
+.crafting-controls {
+  background: #16213e;
+  border-radius: 4px;
+  padding: 16px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.quantity-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.quantity-control label {
+  color: #888;
+  font-size: 14px;
+}
+
+.quantity-input {
+  width: 80px;
+  padding: 6px 8px;
+  background: #0f3460;
+  border: 1px solid #16213e;
+  border-radius: 4px;
+  color: #eee;
+  font-size: 14px;
+}
+
+.craft-btn {
+  padding: 8px 16px;
+  background: #4a9eff;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background 0.2s;
+}
+
+.craft-btn:hover {
+  background: #3a8eef;
+}
+
+.job-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.job-card {
+  background: #1a1a2e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+.job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.job-quantity {
+  color: #888;
+  font-size: 12px;
+}
+
+.job-progress {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 16px;
+  background: #0f3460;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4a9eff, #00d4ff);
+  transition: width 0.3s;
+}
+
+.progress-text {
+  color: #888;
+  font-size: 12px;
+  min-width: 50px;
+}
+
+.cancel-btn {
+  padding: 4px 12px;
+  background: #ff6b6b;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.cancel-btn:hover {
+  background: #ff5555;
+}
+
+.empty-message {
+  padding: 32px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}

@@ -11,6 +11,20 @@ import {
   setCurrentPlayerSkills,
 } from '../slices/playerSlice';
 import { startCombat, updateCombat, setCombatResult } from '../slices/combatSlice';
+import {
+  setCurrentStation,
+  setStorage,
+  setCargoHold,
+  setRecipes,
+  setCraftingJobs,
+  addCraftingJob,
+  removeCraftingJob,
+  updateCraftingProgress,
+  setMarketOrders,
+  addMarketOrder,
+  updateMarketOrder,
+  setError,
+} from '../slices/stationSlice';
 import { SocketEvent } from '@hexploration/shared';
 
 let listenersInitialized = false;
@@ -147,6 +161,129 @@ export const setupSocketListeners = (store: any) => {
     socket.on(SocketEvent.SKILLS_ERROR, (data: { message?: string }) => {
       console.error('Ошибка навыков:', data.message);
       if (data.message) alert(data.message);
+    });
+
+    // Станции
+    socket.on(SocketEvent.STATION_DATA, (data: any) => {
+      if (data.error) {
+        store.dispatch(setError(data.error));
+      } else {
+        store.dispatch(setCurrentStation(data.station));
+        store.dispatch(setStorage(data.station?.storage));
+        store.dispatch(setCargoHold(data.cargoHold));
+        // Установить активные задачи крафта для этой станции
+        if (data.craftingJobs) {
+          store.dispatch(setCraftingJobs(data.craftingJobs));
+        }
+      }
+    });
+
+    socket.on(SocketEvent.STATION_STORAGE_DATA, (data: any) => {
+      if (data.error) {
+        store.dispatch(setError(data.error));
+      } else {
+        store.dispatch(setStorage(data.storage));
+        store.dispatch(setCargoHold(data.cargoHold));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_CARGO_TRANSFER_SUCCESS, (data: any) => {
+      store.dispatch(setStorage(data.storage));
+      store.dispatch(setCargoHold(data.cargoHold));
+    });
+
+    socket.on(SocketEvent.STATION_CARGO_TRANSFER_ERROR, (data: any) => {
+      store.dispatch(setError(data.message));
+    });
+
+    socket.on(SocketEvent.STATION_SHIP_STORE_SUCCESS, (data: any) => {
+      store.dispatch(setStorage(data.storage));
+    });
+
+    socket.on(SocketEvent.STATION_SHIP_STORE_ERROR, (data: any) => {
+      store.dispatch(setError(data.message));
+    });
+
+    socket.on(SocketEvent.STATION_SHIP_RETRIEVE_SUCCESS, (data: any) => {
+      store.dispatch(setStorage(data.storage));
+    });
+
+    socket.on(SocketEvent.STATION_SHIP_RETRIEVE_ERROR, (data: any) => {
+      store.dispatch(setError(data.message));
+    });
+
+    socket.on(SocketEvent.STATION_CRAFT_RECIPES_DATA, (data: any) => {
+      if (data.error) {
+        store.dispatch(setError(data.error));
+      } else {
+        store.dispatch(setRecipes(data.recipes));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_CRAFT_START_SUCCESS, (data: any) => {
+      store.dispatch(setStorage(data.storage));
+      // Добавить задачу крафта в список активных
+      if (data.job) {
+        store.dispatch(addCraftingJob(data.job));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_CRAFT_START_ERROR, (data: any) => {
+      store.dispatch(setError(data.message));
+    });
+
+    socket.on(SocketEvent.STATION_CRAFT_PROGRESS, (data: any) => {
+      console.log('[Client] Получено обновление прогресса:', data);
+      store.dispatch(updateCraftingProgress({
+        jobId: data.jobId,
+        progress: data.progress,
+      }));
+    });
+
+    socket.on(SocketEvent.STATION_CRAFT_COMPLETE, (data: any) => {
+      store.dispatch(removeCraftingJob(data.jobId));
+      // Обновить хранилище после завершения крафта
+      if (data.storage) {
+        store.dispatch(setStorage(data.storage));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_CRAFT_CANCEL_SUCCESS, (data: any) => {
+      if (data.error) {
+        store.dispatch(setError(data.error));
+      } else {
+        store.dispatch(setStorage(data.storage));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_MARKET_ORDERS_DATA, (data: any) => {
+      if (data.error) {
+        store.dispatch(setError(data.error));
+      } else {
+        store.dispatch(setMarketOrders(data.orders));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_MARKET_ORDER_CREATE_SUCCESS, (data: any) => {
+      store.dispatch(addMarketOrder(data.order));
+    });
+
+    socket.on(SocketEvent.STATION_MARKET_ORDER_CREATE_ERROR, (data: any) => {
+      store.dispatch(setError(data.message));
+    });
+
+    socket.on(SocketEvent.STATION_MARKET_ORDER_CANCEL_SUCCESS, (data: any) => {
+      if (data.error) {
+        store.dispatch(setError(data.error));
+      }
+    });
+
+    socket.on(SocketEvent.STATION_MARKET_ORDER_EXECUTE_SUCCESS, (data: any) => {
+      store.dispatch(updateMarketOrder(data.order));
+    });
+
+    socket.on(SocketEvent.STATION_MARKET_ORDER_EXECUTE_ERROR, (data: any) => {
+      store.dispatch(setError(data.message));
     });
   });
 };

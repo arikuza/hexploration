@@ -1,0 +1,90 @@
+.hangar-view {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.hangar-info {
+  background: #16213e;
+  border-radius: 4px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.hangar-capacity {
+  color: #888;
+  font-size: 14px;
+}
+
+.store-ship-btn {
+  padding: 8px 16px;
+  background: #4a9eff;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background 0.2s;
+}
+
+.store-ship-btn:hover {
+  background: #3a8eef;
+}
+
+.ship-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.ship-card {
+  background: #16213e;
+  border: 1px solid #0f3460;
+  border-radius: 4px;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ship-info {
+  flex: 1;
+}
+
+.ship-info h4 {
+  margin: 0 0 8px 0;
+  color: #4a9eff;
+  font-size: 16px;
+}
+
+.ship-details {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #888;
+}
+
+.retrieve-btn {
+  padding: 6px 12px;
+  background: #4a9eff;
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.retrieve-btn:hover {
+  background: #3a8eef;
+}
+
+.empty-message {
+  padding: 32px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}

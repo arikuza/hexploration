@@ -1,5 +1,6 @@
 import { HexCoordinates } from './hex.types.js';
 import type { PlayerSkills } from './skill.types.js';
+import type { CargoHold } from './storage.types.js';
 
 /**
  * Данные игрока
@@ -33,6 +34,7 @@ export interface Ship {
   speed: number;
   turnRate: number;
   weapons: Weapon[];
+  cargoHold?: CargoHold;          // Трюм корабля для грузов
 }
 
 /**

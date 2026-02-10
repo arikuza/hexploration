@@ -1,15 +1,16 @@
 import React from 'react';
 import { useAppSelector } from '../../store/hooks';
-import { HexCoordinates } from '@hexploration/shared';
+import { HexCoordinates, SocketEvent, StructureType } from '@hexploration/shared';
 import { socketService } from '../../services/socketService';
 import './HexInfo.css';
 
 interface HexInfoProps {
   selectedHex: HexCoordinates | null;
   onOpenPlanetarySystem?: (coordinates: HexCoordinates) => void;
+  onOpenStation?: (stationId: string) => void;
 }
 
-export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySystem }) => {
+export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySystem, onOpenStation }) => {
   const players = useAppSelector((state) => state.player.players);
   const currentPlayer = useAppSelector((state) => state.player.currentPlayer);
   const map = useAppSelector((state) => state.game.map);
@@ -166,6 +167,35 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
               onClick={() => onOpenPlanetarySystem?.(selectedHex)}
             >
               🌌 Открыть систему
+            </button>
+          </div>
+        )}
+
+        {/* Кнопка открыть станцию — если есть станция и игрок здесь */}
+        {hexCell?.hasStation && isCurrentPlayerHere && (
+          <div className="hex-section">
+            <button
+              type="button"
+              className="colonize-button hex-open-station-btn"
+              onClick={() => {
+                // Загрузить систему и найти станцию
+                socketService.emit(SocketEvent.SYSTEM_GET, { coordinates: selectedHex });
+                const handler = (data: any) => {
+                  console.log('Получены данные системы:', data);
+                  const station = data.system?.structures?.find((s: any) => s.type === StructureType.SPACE_STATION);
+                  console.log('Найдена станция:', station);
+                  if (station && onOpenStation) {
+                    console.log('Открываем станцию:', station.id);
+                    onOpenStation(station.id);
+                    socketService.off(SocketEvent.SYSTEM_DATA, handler);
+                  } else {
+                    console.warn('Станция не найдена в системе. Структуры:', data.system?.structures);
+                  }
+                };
+                socketService.on(SocketEvent.SYSTEM_DATA, handler);
+              }}
+            >
+              🏭 Открыть станцию
             </button>
           </div>
         )}
