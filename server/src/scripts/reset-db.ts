@@ -44,8 +44,10 @@ async function resetDatabase() {
     
     for (const collection of collections) {
       try {
+        // @ts-ignore - скрипт не используется в продакшене
         const count = await collection.model.countDocuments();
         if (count > 0) {
+          // @ts-ignore - скрипт не используется в продакшене
           await collection.model.deleteMany({});
           console.log(`✅ Удалено ${count} документов из коллекции "${collection.name}"`);
         } else {

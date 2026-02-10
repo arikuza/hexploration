@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
+import { existsSync } from 'fs';
 import { authRouter } from './routes/auth.js';
 import { gameRouter } from './routes/game.js';
 import { setupGameSocket } from './socket/gameSocket.js';
@@ -91,12 +92,10 @@ app.post('/api/admin/reset-db', async (req, res) => {
   }
 });
 
-// Сервить статические файлы клиента в продакшн
-if (process.env.NODE_ENV === 'production') {
-  const clientBuildPath = path.join(__dirname, '../../client/dist');
+// Сервить статические файлы клиента, если есть сборка (продакшн или локальный тест билда)
+const clientBuildPath = path.join(__dirname, '../../client/dist');
+if (existsSync(clientBuildPath)) {
   app.use(express.static(clientBuildPath));
-  
-  // Для всех остальных маршрутов отдавать index.html (SPA routing)
   app.get('*', (req, res) => {
     res.sendFile(path.join(clientBuildPath, 'index.html'));
   });

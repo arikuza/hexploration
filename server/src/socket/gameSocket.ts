@@ -289,9 +289,15 @@ export function setupGameSocket(io: Server): void {
       thrust: number;
       turn: number;
       boost?: boolean;
+      strafe?: number;
     }) => {
       const combatSystem = gameWorld.getCombatSystem();
-      combatSystem.applyControl(data.combatId, socket.data.userId, data.thrust, data.turn, data.boost || false);
+      const strafeValue = data.strafe ?? 0;
+      // Логирование для отладки - ВСЕГДА логируем стрейф
+      if (strafeValue !== 0) {
+        console.log(`[SERVER STRAFE RECEIVED] Player ${socket.data.userId}: strafe=${strafeValue}, thrust=${data.thrust}, turn=${data.turn}, boost=${data.boost || false}`);
+      }
+      combatSystem.applyControl(data.combatId, socket.data.userId, data.thrust, data.turn, data.boost || false, strafeValue);
     });
 
     /**
@@ -310,7 +316,7 @@ export function setupGameSocket(io: Server): void {
       if (data.action === 'thrust' || data.action === 'turn') {
         const thrust = data.action === 'thrust' ? (data.value || 0) : 0;
         const turn = data.action === 'turn' ? (data.value || 0) : 0;
-        combatSystem.applyControl(data.combatId, socket.data.userId, thrust, turn);
+        combatSystem.applyControl(data.combatId, socket.data.userId, thrust, turn, false, 0);
       } else if (data.action === 'fire' && data.weaponId) {
         const weapon = player.ship.weapons.find(w => w.id === data.weaponId);
         if (weapon) {

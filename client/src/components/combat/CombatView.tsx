@@ -50,18 +50,28 @@ export const CombatView: React.FC = () => {
   // Обработка клавиатуры
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Предотвращаем дефолтное поведение для пробела и стрелок
-      if (e.key === ' ' || e.key.startsWith('Arrow')) {
+      const key = e.key.toLowerCase();
+      const code = e.code.toLowerCase();
+      
+      // Предотвращаем дефолтное поведение для пробела, стрелок и Q/E
+      if (e.key === ' ' || e.key.startsWith('Arrow') || key === 'q' || key === 'e' || key === 'й' || key === 'у' || code === 'keyq' || code === 'keye') {
         e.preventDefault();
+        e.stopPropagation();
       }
       
-      const key = e.key.toLowerCase();
+      // Добавляем как по key, так и по code для надежности
       keysRef.current.add(key);
+      if (code === 'keyq') keysRef.current.add('q');
+      if (code === 'keye') keysRef.current.add('e');
     };
 
     const handleKeyUp = (e: KeyboardEvent) => {
       const key = e.key.toLowerCase();
+      const code = e.code.toLowerCase();
+      
       keysRef.current.delete(key);
+      if (code === 'keyq') keysRef.current.delete('q');
+      if (code === 'keye') keysRef.current.delete('e');
     };
 
     window.addEventListener('keydown', handleKeyDown);
@@ -73,7 +83,7 @@ export const CombatView: React.FC = () => {
     };
   }, []);
 
-  // Отправка действий на сервер (постоянно)
+  // Отправка действий на сервер (постоянно, каждые 50ms для плавности)
   useEffect(() => {
     const interval = setInterval(() => {
       const currentCombat = combatRef.current;
@@ -83,19 +93,42 @@ export const CombatView: React.FC = () => {
       let thrust = 0;
       let turn = 0;
       let boost = false;
+      let strafe = 0;
 
       if (currentKeys.has('w') || currentKeys.has('ц')) thrust = 1;
       if (currentKeys.has('s') || currentKeys.has('ы')) thrust = -0.5;
       if (currentKeys.has('a') || currentKeys.has('ф')) turn = -SHIP_TURN_RATE;
       if (currentKeys.has('d') || currentKeys.has('в')) turn = SHIP_TURN_RATE;
       if (currentKeys.has('shift')) boost = true; // Ускорение на Shift
+      // Обработка стрейфа: Q/й - влево, E/у - вправо
+      if (currentKeys.has('q') || currentKeys.has('й')) {
+        strafe = -1; // Стейф влево
+      }
+      if (currentKeys.has('e') || currentKeys.has('у')) {
+        strafe = 1; // Стейф вправо
+      }
+      // Если Q и E нажаты одновременно, приоритет у E (вправо)
+      if ((currentKeys.has('q') || currentKeys.has('й')) && (currentKeys.has('e') || currentKeys.has('у'))) {
+        strafe = 1;
+      }
+
+      // Логирование для отладки (можно убрать после проверки)
+      if (strafe !== 0) {
+        console.log(`[CLIENT STRAFE] Q=${currentKeys.has('q') || currentKeys.has('й')}, E=${currentKeys.has('e') || currentKeys.has('у')}, strafe=${strafe}, combatId=${currentCombat.id}, socketConnected=${socketService.isConnected()}`);
+      }
 
       socketService.emit('combat:control', {
         combatId: currentCombat.id,
         thrust,
         turn,
         boost,
+        strafe,
       });
+      
+      // Дополнительное логирование для диагностики
+      if (strafe !== 0) {
+        console.log(`[CLIENT EMIT] Отправлено combat:control с strafe=${strafe}`);
+      }
 
       // Стрельба - отправляется постоянно пока удерживается пробел
       if (currentKeys.has(' ')) {
@@ -105,7 +138,7 @@ export const CombatView: React.FC = () => {
           weaponId: 'laser_basic',
         });
       }
-    }, 50); // 20 раз в секунду
+    }, 50); // 20 раз в секунду (50ms интервал)
 
     return () => clearInterval(interval);
   }, []);
@@ -184,7 +217,7 @@ export const CombatView: React.FC = () => {
         className="combat-canvas"
       />
       <div className="combat-controls">
-        <p>Управление: W/S - движение, A/D - поворот, Space - стрельба</p>
+        <p>Управление: W/S - движение, A/D - поворот, Q/E - стрейф, Space - стрельба</p>
       </div>
       
       {/* Панель результатов боя */}

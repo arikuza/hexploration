@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAppSelector } from '../../store/hooks';
-import { HexCoordinates, SocketEvent, StructureType } from '@hexploration/shared';
+import { HexCoordinates, SocketEvent, StructureType, SystemType } from '@hexploration/shared';
 import { socketService } from '../../services/socketService';
 import './HexInfo.css';
 
@@ -159,7 +159,7 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
         </div>
 
         {/* Кнопка открыть планетарную систему — для любого планетарного гекса */}
-        {hexCell?.systemType === 'planetary' && (
+        {(hexCell?.systemType === SystemType.PLANETARY || hexCell?.systemType === 'planetary') && (
           <div className="hex-section">
             <button
               type="button"
@@ -179,20 +179,32 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
               className="colonize-button hex-open-station-btn"
               onClick={() => {
                 // Загрузить систему и найти станцию
-                socketService.emit(SocketEvent.SYSTEM_GET, { coordinates: selectedHex });
+                let handlerRemoved = false;
                 const handler = (data: any) => {
+                  if (handlerRemoved) return;
                   console.log('Получены данные системы:', data);
                   const station = data.system?.structures?.find((s: any) => s.type === StructureType.SPACE_STATION);
                   console.log('Найдена станция:', station);
                   if (station && onOpenStation) {
                     console.log('Открываем станцию:', station.id);
-                    onOpenStation(station.id);
+                    handlerRemoved = true;
                     socketService.off(SocketEvent.SYSTEM_DATA, handler);
+                    onOpenStation(station.id);
                   } else {
                     console.warn('Станция не найдена в системе. Структуры:', data.system?.structures);
                   }
                 };
                 socketService.on(SocketEvent.SYSTEM_DATA, handler);
+                socketService.emit(SocketEvent.SYSTEM_GET, { coordinates: selectedHex });
+                
+                // Таймаут на случай если ответ не придет
+                setTimeout(() => {
+                  if (!handlerRemoved) {
+                    handlerRemoved = true;
+                    socketService.off(SocketEvent.SYSTEM_DATA, handler);
+                    console.warn('Таймаут ожидания данных системы');
+                  }
+                }, 5000);
               }}
             >
               🏭 Открыть станцию

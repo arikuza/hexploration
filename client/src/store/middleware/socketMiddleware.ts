@@ -87,8 +87,8 @@ export const setupSocketListeners = (store: any) => {
         store.dispatch(updatePlayerTimers(data.timers));
       }
       
-      // Обновление карты при колонизации или развитии
-      if ((data.type === 'colony_created' || data.type === 'colony_developed') && data.map) {
+      // Обновление карты при колонизации, развитии или деградации
+      if ((data.type === 'colony_created' || data.type === 'colony_developed' || data.type === 'colony_decayed') && data.map) {
         console.log(`🏛️ Обновление карты: ${data.type}`, data);
         store.dispatch(updateMap(data.map));
       }

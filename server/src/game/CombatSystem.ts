@@ -35,6 +35,7 @@ export class CombatSystem {
   private combats: Map<string, CombatState> = new Map();
   private bots: Map<string, NPCBot> = new Map();
   private boostStates: Map<string, boolean> = new Map(); // combatId:playerId -> isBoostActive
+  private strafeStates: Map<string, number> = new Map(); // combatId:playerId -> strafe value (-1, 0, 1)
 
   constructor() {
     console.log('🚀 CombatSystem initialized with:');
@@ -139,20 +140,58 @@ export class CombatSystem {
 
     // Обновить позиции кораблей
     combat.ships.forEach(ship => {
+      // Восстановление энергии (зависит от того, бот это или игрок)
+      const isBot = ship.playerId.startsWith('bot_') || ship.playerId.startsWith('BOT_');
+      const energyRegen = isBot ? BOT_ENERGY_REGEN : SHIP_ENERGY_REGEN;
+      
+      // Проверить активность ускорения и стрейфа
+      const controlKey = `${combatId}:${ship.playerId}`;
+      const isBoostActive = this.boostStates.get(controlKey) || false;
+      const strafeValue = this.strafeStates.get(controlKey) || 0;
+      
+      // Применить стрейф каждый кадр физики ДО обновления позиции
+      if (strafeValue !== 0) {
+        let acceleration = isBot ? BOT_ACCELERATION : SHIP_ACCELERATION;
+        let maxSpeed = isBot ? BOT_MAX_SPEED : SHIP_MAX_SPEED;
+        
+        // Применить ускорение (boost) если активно
+        if (isBoostActive && ship.energy >= BOOST_MIN_ENERGY) {
+          acceleration *= BOOST_ACCELERATION_MULTIPLIER;
+          maxSpeed *= BOOST_SPEED_MULTIPLIER;
+        }
+        
+        // Увеличиваем силу стрейфа для более заметного эффекта
+        // Стрейф должен быть более заметным - используем увеличенное ускорение БЕЗ умножения на deltaTime
+        // так как deltaTime уже учтен в обновлении позиции
+        const strafeAcceleration = acceleration * 2.0; // 200% от основного ускорения для очень заметного эффекта
+        const strafeX = strafeValue * (-Math.sin(ship.rotation)) * strafeAcceleration * deltaTime;
+        const strafeY = strafeValue * Math.cos(ship.rotation) * strafeAcceleration * deltaTime;
+        
+        const velBefore = { x: ship.velocity.x, y: ship.velocity.y };
+        ship.velocity.x += strafeX;
+        ship.velocity.y += strafeY;
+        
+        // Ограничить скорость после применения стрейфа
+        const speedBefore = Math.sqrt(velBefore.x ** 2 + velBefore.y ** 2);
+        const speedAfter = Math.sqrt(ship.velocity.x ** 2 + ship.velocity.y ** 2);
+        if (speedAfter > maxSpeed) {
+          // Сохраняем направление движения, включая компонент стрейфа
+          ship.velocity.x = (ship.velocity.x / speedAfter) * maxSpeed;
+          ship.velocity.y = (ship.velocity.y / speedAfter) * maxSpeed;
+        }
+        
+        // Логирование для отладки - ВСЕГДА логируем стрейф для диагностики
+        const finalSpeed = Math.sqrt(ship.velocity.x ** 2 + ship.velocity.y ** 2);
+        console.log(`[STRAFE UPDATE] Player ${ship.playerId}: strafe=${strafeValue}, rotation=${(ship.rotation * 180 / Math.PI).toFixed(1)}°, strafeVec=(${strafeX.toFixed(3)}, ${strafeY.toFixed(3)}), velBefore=(${velBefore.x.toFixed(2)}, ${velBefore.y.toFixed(2)}), velAfter=(${ship.velocity.x.toFixed(2)}, ${ship.velocity.y.toFixed(2)}), speedBefore=${speedBefore.toFixed(2)}, speedAfter=${speedAfter.toFixed(2)}, finalSpeed=${finalSpeed.toFixed(2)}, maxSpeed=${maxSpeed.toFixed(2)}, deltaTime=${deltaTime.toFixed(4)}`);
+      }
+      
+      // Обновить позицию на основе скорости (ПОСЛЕ применения всех сил)
       ship.position.x += ship.velocity.x * deltaTime;
       ship.position.y += ship.velocity.y * deltaTime;
       ship.rotation += ship.angularVelocity * deltaTime;
 
       // Границы арены
       this.handleBoundaries(ship, combat.arena);
-      
-      // Восстановление энергии (зависит от того, бот это или игрок)
-      const isBot = ship.playerId.startsWith('bot_') || ship.playerId.startsWith('BOT_');
-      const energyRegen = isBot ? BOT_ENERGY_REGEN : SHIP_ENERGY_REGEN;
-      
-      // Проверить активность ускорения
-      const boostKey = `${combatId}:${ship.playerId}`;
-      const isBoostActive = this.boostStates.get(boostKey) || false;
       
       // Расход энергии при ускорении
       let energyChange = energyRegen * deltaTime;
@@ -199,7 +238,7 @@ export class CombatSystem {
         const actions = bot.decideActions(combat, botShip, playerShip);
         
         // Применить управление
-        this.applyControl(combatId, bot.playerId, actions.thrust, actions.turn);
+        this.applyControl(combatId, bot.playerId, actions.thrust, actions.turn, false, 0);
         
         // Стрелять если нужно
         if (actions.fire && actions.weaponId) {
@@ -314,13 +353,29 @@ export class CombatSystem {
     playerId: string,
     thrust: number,
     turn: number,
-    boost: boolean = false
+    boost: boolean = false,
+    strafe: number = 0
   ): boolean {
+    // Логирование ВСЕХ вызовов applyControl для диагностики
+    if (strafe !== 0) {
+      console.log(`[APPLY CONTROL CALLED] combatId=${combatId}, playerId=${playerId}, strafe=${strafe}, thrust=${thrust}, turn=${turn}, boost=${boost}`);
+    }
+    
     const combat = this.combats.get(combatId);
-    if (!combat) return false;
+    if (!combat) {
+      if (strafe !== 0) {
+        console.log(`[APPLY CONTROL ERROR] Combat not found: ${combatId}`);
+      }
+      return false;
+    }
 
     const ship = combat.ships.find(s => s.playerId === playerId);
-    if (!ship) return false;
+    if (!ship) {
+      if (strafe !== 0) {
+        console.log(`[APPLY CONTROL ERROR] Ship not found for player: ${playerId}`);
+      }
+      return false;
+    }
 
     // Определить является ли корабль ботом
     const isBot = playerId.startsWith('bot_') || playerId.startsWith('BOT_');
@@ -345,16 +400,27 @@ export class CombatSystem {
     ship.velocity.x += thrustX * acceleration;
     ship.velocity.y += thrustY * acceleration;
 
-    // Ограничить скорость
+    // Стрейф теперь применяется каждый кадр физики в updateCombat для плавности
+    // Здесь только сохраняем состояние стрейфа
+
+    // Ограничить скорость ПОСЛЕ применения всех сил (тяга + стрейф)
     const speed = Math.sqrt(ship.velocity.x ** 2 + ship.velocity.y ** 2);
     if (speed > maxSpeed) {
+      // Нормализуем вектор скорости и умножаем на максимальную скорость
+      // Это сохраняет направление движения, включая компонент стрейфа
       ship.velocity.x = (ship.velocity.x / speed) * maxSpeed;
       ship.velocity.y = (ship.velocity.y / speed) * maxSpeed;
     }
 
-    // Сохранить состояние ускорения для расхода энергии
-    const boostKey = `${combatId}:${playerId}`;
-    this.boostStates.set(boostKey, boostActive);
+    // Сохранить состояние ускорения и стрейфа для применения каждый кадр физики
+    const controlKey = `${combatId}:${playerId}`;
+    this.boostStates.set(controlKey, boostActive);
+    this.strafeStates.set(controlKey, strafe);
+    
+    // Логирование для отладки - ВСЕГДА логируем стрейф
+    if (strafe !== 0) {
+      console.log(`[APPLY CONTROL] Player ${playerId}: strafe=${strafe}, thrust=${thrust}, turn=${turn}, boost=${boostActive}, saved to strafeStates[${controlKey}]`);
+    }
 
     return true;
   }

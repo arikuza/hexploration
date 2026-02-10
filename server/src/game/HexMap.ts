@@ -379,18 +379,46 @@ export class HexMapManager {
 
   /**
    * Деградация колоний: раз в 5 минут −0.1 к threat при наличии красных зон рядом (мин. 0.1)
+   * @returns true если произошла деградация (нужно сохранить изменения)
    */
-  checkColonyDecay(): void {
+  checkColonyDecay(): boolean {
     const now = Date.now();
     const decayInterval = 5 * 60 * 1000; // 5 минут
+    let coloniesChecked = 0;
+    let coloniesDecayed = 0;
+    let totalCells = 0;
+    let skippedNoStation = 0;
+    let skippedNoOwner = 0;
+    let skippedNPC = 0;
+
+    // #region agent log
+    console.log(`🔍 [DECAY] Начало проверки деградации колоний (всего гексов: ${this.map.cells.size})`);
+    // #endregion
 
     this.map.cells.forEach((cell) => {
-      if (!cell.hasStation || !cell.owner || cell.owner === 'npc') return;
+      totalCells++;
+      if (!cell.hasStation) {
+        skippedNoStation++;
+        return;
+      }
+      if (!cell.owner) {
+        skippedNoOwner++;
+        return;
+      }
+      if (cell.owner === 'npc') {
+        skippedNPC++;
+        return;
+      }
+      
+      coloniesChecked++;
       
       // Инициализировать lastDecayCheck если его нет
       if (!cell.lastDecayCheck) {
         cell.lastDecayCheck = now;
-        console.log(`🕐 Инициализация проверки деградации для колонии [${cell.coordinates.q}, ${cell.coordinates.r}] (threat=${cell.threat.toFixed(2)})`);
+        console.log(`🕐 Инициализация проверки деградации для колонии [${cell.coordinates.q}, ${cell.coordinates.r}] (threat=${cell.threat.toFixed(2)}, owner=${cell.owner})`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HexMap.ts:392',message:'Colony decay check initialized',data:{q:cell.coordinates.q,r:cell.coordinates.r,threat:cell.threat,owner:cell.owner,now},timestamp:Date.now(),runId:'decay-check',hypothesisId:'A'})}).catch(()=>{});
+        // #endregion
         return; // Пропустить первую проверку, дать время накопить интервал
       }
 
@@ -406,13 +434,21 @@ export class HexMapManager {
         return; // Ещё не прошло 5 минут
       }
 
-      console.log(`🔍 Проверка деградации для колонии [${cell.coordinates.q}, ${cell.coordinates.r}] (прошло ${minutesPassed} мин, threat=${cell.threat.toFixed(2)})`);
+      console.log(`🔍 Проверка деградации для колонии [${cell.coordinates.q}, ${cell.coordinates.r}] (прошло ${minutesPassed} мин, threat=${cell.threat.toFixed(2)}, owner=${cell.owner})`);
       const hasNearbyDanger = this.checkNearbyDanger(cell.coordinates);
+
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HexMap.ts:410',message:'Colony decay check',data:{q:cell.coordinates.q,r:cell.coordinates.r,threat:cell.threat,owner:cell.owner,timeSinceLastCheck,minutesPassed,hasNearbyDanger},timestamp:Date.now(),runId:'decay-check',hypothesisId:'B'})}).catch(()=>{});
+      // #endregion
 
       if (hasNearbyDanger) {
         const oldThreat = cell.threat;
         cell.threat = Math.max(0.1, cell.threat - 0.1);
+        coloniesDecayed++;
         console.log(`📉 Деградация колонии [${cell.coordinates.q}, ${cell.coordinates.r}]: threat ${oldThreat.toFixed(2)} → ${cell.threat.toFixed(2)}`);
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HexMap.ts:416',message:'Colony decayed',data:{q:cell.coordinates.q,r:cell.coordinates.r,oldThreat,newThreat:cell.threat,owner:cell.owner},timestamp:Date.now(),runId:'decay-check',hypothesisId:'C'})}).catch(()=>{});
+        // #endregion
         // Пересчитать влияние от всех источников после деградации
         this.recalculateAllInfluences();
       } else {
@@ -421,6 +457,19 @@ export class HexMapManager {
 
       cell.lastDecayCheck = now;
     });
+    
+    // #region agent log
+    console.log(`📊 [DECAY] Проверка деградации завершена: всего гексов=${totalCells}, пропущено (нет станции)=${skippedNoStation}, пропущено (нет владельца)=${skippedNoOwner}, пропущено (NPC)=${skippedNPC}, проверено колоний=${coloniesChecked}, деградировало=${coloniesDecayed}`);
+    // #endregion
+    
+    if (coloniesChecked > 0) {
+      console.log(`📊 Проверка деградации завершена: проверено колоний=${coloniesChecked}, деградировало=${coloniesDecayed}`);
+    } else {
+      console.log(`ℹ️ [DECAY] Пользовательских колоний не найдено для проверки деградации`);
+    }
+    
+    // Возвращаем true если произошла деградация (нужно сохранить изменения)
+    return coloniesDecayed > 0;
   }
 
   /**
@@ -431,21 +480,41 @@ export class HexMapManager {
     const hexes = hexInRadius(coordinates, radius);
     const nearbyThreats: Array<{ q: number; r: number; threat: number; distance: number }> = [];
     let foundDanger = false;
+    let checkedHexes = 0;
+    let dangerousHexes = 0;
+    let cellsFound = 0;
+    let cellsMissing = 0;
+
+    console.log(`🔍 [DANGER] Проверка опасных зон для колонии [${coordinates.q}, ${coordinates.r}], радиус=${radius}, всего гексов в радиусе=${hexes.length}`);
 
     for (const hex of hexes) {
       // Пропустить сам центр (колонию)
       if (hex.q === coordinates.q && hex.r === coordinates.r) continue;
       
+      checkedHexes++;
       const cell = this.getCell(hex);
       if (cell) {
+        cellsFound++;
         const distance = hexDistance(coordinates, hex);
         nearbyThreats.push({ q: hex.q, r: hex.r, threat: cell.threat, distance });
         if (cell.threat < -0.5) {
+          dangerousHexes++;
           console.log(`⚠️ Найдена опасная зона рядом с колонией [${coordinates.q}, ${coordinates.r}]: гекс [${hex.q}, ${hex.r}] на расстоянии ${distance} имеет threat=${cell.threat.toFixed(2)}`);
+          // #region agent log
+          fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HexMap.ts:490',message:'Dangerous hex found near colony',data:{colonyQ:coordinates.q,colonyR:coordinates.r,hexQ:hex.q,hexR:hex.r,distance,threat:cell.threat},timestamp:Date.now(),runId:'decay-check',hypothesisId:'D'})}).catch(()=>{});
+          // #endregion
           foundDanger = true;
         }
+      } else {
+        cellsMissing++;
       }
     }
+    
+    console.log(`📊 [DANGER] Проверка завершена для колонии [${coordinates.q}, ${coordinates.r}]: проверено гексов=${checkedHexes}, найдено ячеек=${cellsFound}, отсутствует=${cellsMissing}, опасных зон=${dangerousHexes}, результат=${foundDanger ? 'ОПАСНО' : 'БЕЗОПАСНО'}`);
+    
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HexMap.ts:505',message:'Nearby danger check completed',data:{colonyQ:coordinates.q,colonyR:coordinates.r,radius,checkedHexes,cellsFound,cellsMissing,dangerousHexes,foundDanger,nearbyThreats:nearbyThreats.slice(0,10)},timestamp:Date.now(),runId:'decay-check',hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
 
     // Логируем все гексы в радиусе для отладки (только опасные или все, если их немного)
     if (nearbyThreats.length > 0) {

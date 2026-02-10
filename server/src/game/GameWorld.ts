@@ -18,7 +18,8 @@ import {
   MAP_RADIUS, 
   SHIP_STATS, 
   MOVE_COOLDOWN, 
-  hexDistance, 
+  hexDistance,
+  hexKey,
   DEFAULT_WEAPONS,
   STRUCTURE_COSTS,
   STRUCTURE_BUILD_TIMES,
@@ -121,8 +122,29 @@ class GameWorld {
     }, 100); // Обновлять каждые 100ms
 
     // Запустить проверку деградации колоний каждые 10 секунд
-    setInterval(() => {
-      this.hexMap.checkColonyDecay();
+    setInterval(async () => {
+      const decayed = this.hexMap.checkColonyDecay();
+      // Если произошла деградация, сохранить изменения и уведомить клиентов
+      if (decayed) {
+        console.log('💾 [DECAY] Сохранение изменений после деградации колоний...');
+        await this.saveWorld();
+        
+        // Уведомить всех клиентов об обновлении карты
+        if (this.io) {
+          const state = this.getState();
+          this.io.emit(SocketEvent.GAME_UPDATE, {
+            type: 'colony_decayed',
+            map: {
+              radius: state.map.radius,
+              cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
+                key,
+                ...cell,
+              })),
+            },
+          });
+          console.log('📡 [DECAY] Отправлено обновление карты клиентам после деградации');
+        }
+      }
     }, 10000);
   }
 
@@ -473,7 +495,62 @@ class GameWorld {
     const result = this.hexMap.colonizeSystem(coordinates, playerId);
     
     if (result.success) {
-      // Сохранить изменения
+      // Убедиться, что планетарная система существует
+      const systemId = await this.hexMap.ensurePlanetarySystem(coordinates);
+      if (!systemId) {
+        return { success: false, error: 'Не удалось создать планетарную систему' };
+      }
+
+      // Загрузить систему
+      const system = await this.getPlanetarySystem(coordinates);
+      if (!system) {
+        return { success: false, error: 'Планетарная система не найдена' };
+      }
+
+      // Проверить, нет ли уже станции игрока в системе
+      const hasPlayerStation = system.structures.some(
+        (s: SpaceStructure) => s.type === StructureType.SPACE_STATION && s.ownerId === playerId
+      );
+
+      if (!hasPlayerStation) {
+        // Создать станцию для игрока
+        const hexKeyStr = hexKey(coordinates);
+        const stationId = uuidv4();
+        const stationStructure: SpaceStructure = {
+          id: stationId,
+          type: StructureType.SPACE_STATION,
+          ownerId: playerId,
+          location: { type: 'orbit' as const, targetId: `star-${hexKeyStr}` },
+          cost: STRUCTURE_COSTS[StructureType.SPACE_STATION],
+          buildTime: STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION],
+          buildProgress: 100, // Станция сразу готова при колонизации
+          buildStartTime: Date.now() - STRUCTURE_BUILD_TIMES[StructureType.SPACE_STATION] * 1000,
+          health: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+          maxHealth: STRUCTURE_HEALTH[StructureType.SPACE_STATION],
+          operational: true, // Станция сразу работает
+          createdAt: Date.now(),
+          storage: {
+            stationId: stationId,
+            items: [],
+            ships: [],
+            maxShipSlots: 10,
+          },
+          marketOrders: [],
+        };
+
+        // Добавить станцию в систему
+        system.structures.push(stationStructure);
+
+        // Создать хранилище станции в БД
+        await StationStorageService.createStorage(stationId);
+
+        // Сохранить систему
+        await PlanetarySystemService.save(system);
+
+        console.log(`🏛️ Станция создана для игрока ${player.username} в системе [${coordinates.q}, ${coordinates.r}], stationId=${stationId}`);
+      }
+
+      // Сохранить изменения карты
       await this.saveWorld();
     }
 
