@@ -50,6 +50,47 @@ app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+// Временный endpoint для очистки базы данных (только для продакшн, с секретным ключом)
+app.post('/api/admin/reset-db', async (req, res) => {
+  if (process.env.NODE_ENV !== 'production') {
+    return res.status(403).json({ error: 'Доступно только в продакшн' });
+  }
+  
+  const secret = req.body.secret;
+  if (secret !== process.env.RESET_DB_SECRET || !process.env.RESET_DB_SECRET) {
+    return res.status(403).json({ error: 'Неверный секретный ключ' });
+  }
+  
+  try {
+    const mongoose = await import('mongoose');
+    const db = mongoose.default.connection.db;
+    
+    if (!db) {
+      return res.status(500).json({ error: 'База данных не подключена' });
+    }
+    
+    const collections = await db.listCollections().toArray();
+    const results: string[] = [];
+    
+    for (const collection of collections) {
+      const count = await db.collection(collection.name).countDocuments();
+      await db.collection(collection.name).deleteMany({});
+      await db.collection(collection.name).drop().catch(() => {});
+      results.push(`${collection.name}: ${count} документов удалено`);
+    }
+    
+    await db.dropDatabase().catch(() => {});
+    
+    res.json({ 
+      success: true, 
+      message: 'База данных очищена',
+      collections: results 
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Сервить статические файлы клиента в продакшн
 if (process.env.NODE_ENV === 'production') {
   const clientBuildPath = path.join(__dirname, '../../client/dist');
