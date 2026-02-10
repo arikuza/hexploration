@@ -1,5 +1,12 @@
 /* Existing styles... */
 
+.icon-panel-container {
+  position: fixed;
+  top: 100px;
+  right: 20px;
+  z-index: 10;
+}
+
 .station-modal {
   position: fixed;
   top: 0;

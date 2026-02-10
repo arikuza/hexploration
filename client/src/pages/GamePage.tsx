@@ -13,6 +13,8 @@ import StationPanel from '../components/station/StationPanel';
 import { HexCoordinates } from '@hexploration/shared';
 import './GamePage.css';
 import '../components/ui/HexInfo.css';
+import '../components/ui/SkillsPanel.css';
+import '../components/ui/IconPanel.css';
 
 function GamePage() {
   const { connected } = useAppSelector((state) => state.game);
