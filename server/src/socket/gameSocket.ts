@@ -2,14 +2,15 @@ import { Server, Socket } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { gameWorld } from '../game/GameWorld.js';
 import { getEffectiveShip } from '../game/SkillBonus.js';
-import { SocketEvent, HexCoordinates, StructureType, CargoTransfer, OrderType } from '@hexploration/shared';
+import { SocketEvent, HexCoordinates, StructureType, CargoTransfer, OrderType, keyToHex } from '@hexploration/shared';
 import { PlayerService } from '../database/services/PlayerService.js';
 import { StationStorageService } from '../database/services/StationStorageService.js';
 import { StorageSystem } from '../game/StorageSystem.js';
 import { CraftingSystem } from '../game/CraftingSystem.js';
 import { MarketSystem } from '../game/MarketSystem.js';
 import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
-import { RECIPE_REGISTRY } from '@hexploration/shared';
+import { RECIPE_REGISTRY, QuestType, hexKey } from '@hexploration/shared';
+import { QuestService } from '../database/services/QuestService.js';
 
 interface AuthToken {
   userId: string;
@@ -53,7 +54,7 @@ export function setupGameSocket(io: Server): void {
     console.log(`[Socket] Игрок ${socket.data.userId} присоединился к комнате ${socket.data.userId}`);
 
     // Отправить успешную аутентификацию
-    socket.emit(SocketEvent.AUTH_SUCCESS, { player });
+    socket.emit(SocketEvent.AUTH_SUCCESS, { player: serializePlayer(player) });
 
     // Отправить текущее состояние игры
     const state = gameWorld.getState();
@@ -242,18 +243,30 @@ export function setupGameSocket(io: Server): void {
         return;
       }
 
-      // Начать бой с ботом (с учётом бонусов навыков игрока)
+      // Определить количество ботов по уровню угрозы гекса (УУ)
+      // УУ > 0: 1 бот. УУ от 0 до -1: 1–3 бота в зависимости от УУ
+      const cell = gameWorld.getHexMap().getCell(player.position);
+      const threat = cell?.threat ?? 0;
+      let botCount: number;
+      if (threat > 0) {
+        botCount = 1;
+      } else {
+        // threat в [-1, 0]: 1 + round(-threat * 2), clamped 1–3
+        botCount = Math.min(3, Math.max(1, 1 + Math.round(-threat * 2)));
+      }
+
+      // Начать бой с ботами (с учётом бонусов навыков игрока)
       const combatSystem = gameWorld.getCombatSystem();
       const playerWithShip = { ...player, ship: getEffectiveShip(player) };
-      const combat = combatSystem.startCombatWithBot(playerWithShip);
+      const combat = combatSystem.startCombatWithBots(playerWithShip, botCount);
 
-      // Уведомить игрока
+      socket.join(`combat:${combat.id}`);
       socket.emit('combat:started', { combat });
       
       console.log(`🤖 Бой с ботом начат: ${combat.id}`);
 
       // Обновлять бой каждые 16ms (~60 FPS)
-      const updateInterval = setInterval(() => {
+      const updateInterval = setInterval(async () => {
         const updatedCombat = combatSystem.updateCombat(combat.id, 0.016);
         
         if (!updatedCombat) {
@@ -261,24 +274,168 @@ export function setupGameSocket(io: Server): void {
           return;
         }
 
-        // Отправить обновление игроку
-        socket.emit('combat:update', { combat: updatedCombat });
+        io.to(`combat:${combat.id}`).emit('combat:update', { combat: updatedCombat });
 
         // Проверить окончание боя
         const aliveShips = updatedCombat.ships.filter(s => s.health > 0);
-        const allShipsDead = aliveShips.length <= 1;
-        if (allShipsDead || Date.now() - updatedCombat.startTime > updatedCombat.duration) {
-          const winner = aliveShips.find(s => s.playerId === player.id) 
-            ? player.id 
-            : 'bot';
+        const playerAlive = aliveShips.some(s => s.playerId === player.id);
+        const allBotsDead = !aliveShips.some(s => s.playerId.startsWith('bot_'));
+        const timeExpired = Date.now() - updatedCombat.startTime > updatedCombat.duration;
+        const combatEnded = !playerAlive || allBotsDead || timeExpired;
+
+        if (combatEnded) {
+          const winner = playerAlive && allBotsDead ? player.id : (playerAlive ? player.id : 'bot');
           
-          socket.emit('combat:ended', { winner, combat: updatedCombat });
+          // Засчитать убийства ботов для квестов KILL_ENEMIES
+          let activeQuests: typeof player.activeQuests | undefined;
+          if (winner === player.id && combat.hexKey) {
+            const botKills = updatedCombat.ships.filter(s => s.playerId.startsWith('bot_') && s.health <= 0).length;
+            if (botKills > 0) {
+              await gameWorld.updateQuestProgressOnKill(player.id, combat.hexKey, botKills);
+              const p = gameWorld.getPlayer(player.id);
+              if (p) {
+                await PlayerService.savePlayer(p);
+                activeQuests = p.activeQuests;
+              }
+            }
+          }
+          
+          io.to(`combat:${combat.id}`).emit('combat:ended', { winner, combat: updatedCombat, activeQuests });
+          socket.leave(`combat:${combat.id}`);
 
           combatSystem.endCombat(combat.id);
           clearInterval(updateInterval);
           console.log(`🤖 Бой с ботом завершен: ${combat.id}, победитель: ${winner}`);
         }
       }, 16);
+    });
+
+    /**
+     * Начать бой с инвайдерами (вторжение)
+     */
+    socket.on('combat:start:invasion', (data: { hexKey: string }) => {
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (!player) {
+        socket.emit('combat:error', { message: 'Игрок не найден' });
+        return;
+      }
+      const invasionSystem = gameWorld.getInvasionSystem();
+      const invasion = invasionSystem.getInvasionByHex(data.hexKey);
+      if (!invasion) {
+        socket.emit('combat:error', { message: 'В этом гексе нет вторжения' });
+        return;
+      }
+      const enemyCount = invasionSystem.getEnemyCountForHex(invasion.id, data.hexKey);
+      if (enemyCount <= 0) {
+        socket.emit('combat:error', { message: 'Все инвайдеры в этом гексе уже уничтожены' });
+        return;
+      }
+      invasionSystem.decrementEnemies(invasion.id, data.hexKey, enemyCount);
+
+      const combatSystem = gameWorld.getCombatSystem();
+      const playerWithShip = { ...player, ship: getEffectiveShip(player) };
+      const combat = combatSystem.startCombatInvasion(playerWithShip, data.hexKey, invasion.id, enemyCount);
+
+      socket.join(`combat:${combat.id}`);
+      socket.emit('combat:started', { combat });
+      const updateInterval = setInterval(async () => {
+        const updatedCombat = combatSystem.updateCombat(combat.id, 0.016);
+        if (!updatedCombat) {
+          clearInterval(updateInterval);
+          return;
+        }
+        io.to(`combat:${combat.id}`).emit('combat:update', { combat: updatedCombat });
+        const aliveShips = updatedCombat.ships.filter(s => s.health > 0);
+        const playersAlive = aliveShips.filter(s => !s.playerId.startsWith('invader_'));
+        const invadersAlive = aliveShips.filter(s => s.playerId.startsWith('invader_'));
+        if (playersAlive.length === 0 || (invadersAlive.length === 0 && playersAlive.length > 0) || Date.now() - updatedCombat.startTime > updatedCombat.duration) {
+          const winner = playersAlive.length > 0 ? 'players' : 'invaders';
+          if (winner === 'invaders' && combat.combatType === 'invasion' && combat.invasionId && combat.hexKey) {
+            gameWorld.getInvasionSystem().incrementEnemies(combat.invasionId, combat.hexKey, enemyCount);
+            const inv = gameWorld.getInvasionSystem().getInvasionById(combat.invasionId);
+            if (inv) {
+              const state = gameWorld.getState();
+              const invs = gameWorld.getInvasionSystem().getAllActive();
+              io.emit(SocketEvent.GAME_UPDATE, {
+                type: 'invasion_hex_cleared',
+                sourceHexKey: inv.sourceHexKey,
+                invasions: invs.map(i => ({ id: i.id, sourceHexKey: i.sourceHexKey, neighborHexKeys: i.neighborHexKeys, enemyCountPerHex: i.enemyCountPerHex })),
+                map: { radius: state.map.radius, cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({ key, ...cell })) },
+              });
+            }
+          }
+          let activeQuests: Array<{ questId: string; progress: number; kills?: number; delivered?: number }> | undefined;
+          if (winner === 'players' && combat.hexKey && enemyCount > 0) {
+            for (const ship of playersAlive) {
+              await gameWorld.updateQuestProgressOnKill(ship.playerId, combat.hexKey!, enemyCount);
+              const p = gameWorld.getPlayer(ship.playerId);
+              if (p) {
+                await PlayerService.savePlayer(p);
+                // Invasion обычно один игрок — активные квесты для победителя
+                if (ship.playerId === socket.data.userId) activeQuests = p.activeQuests;
+              }
+            }
+          }
+          io.to(`combat:${combat.id}`).emit('combat:ended', { winner, combat: updatedCombat, activeQuests });
+          combatSystem.endCombat(combat.id);
+          clearInterval(updateInterval);
+
+          if (winner === 'players' && combat.combatType === 'invasion' && combat.invasionId) {
+            const inv = gameWorld.getInvasionSystem().getInvasionById(combat.invasionId);
+            const isCleared = inv ? gameWorld.getInvasionSystem().isCleared(inv) : false;
+            if (inv) {
+              if (isCleared) {
+                const cleared = gameWorld.getInvasionSystem().clearInvasion(inv.sourceHexKey);
+                if (cleared) {
+                  gameWorld.getHexMap().raiseThreatAfterInvasionCleared(keyToHex(inv.sourceHexKey));
+                  gameWorld.saveWorld();
+                }
+              }
+              const state = gameWorld.getState();
+              const invs = gameWorld.getInvasionSystem().getAllActive();
+              io.emit(SocketEvent.GAME_UPDATE, {
+                type: isCleared ? 'invasion_cleared' : 'invasion_hex_cleared',
+                sourceHexKey: inv.sourceHexKey,
+                invasions: invs.map(i => ({ id: i.id, sourceHexKey: i.sourceHexKey, neighborHexKeys: i.neighborHexKeys, enemyCountPerHex: i.enemyCountPerHex })),
+                map: { radius: state.map.radius, cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({ key, ...cell })) },
+              });
+            }
+          }
+        }
+      }, 16);
+    });
+
+    /**
+     * Список активных боёв
+     */
+    socket.on(SocketEvent.COMBAT_LIST_ACTIVE, (data?: { hexKey?: string }) => {
+      const combats = gameWorld.getCombatSystem().getActiveCombats(data?.hexKey);
+      socket.emit(SocketEvent.COMBAT_LIST_ACTIVE_DATA, { combats });
+    });
+
+    /**
+     * Присоединиться к бою
+     */
+    socket.on(SocketEvent.COMBAT_JOIN, (data: { combatId: string }) => {
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (!player) {
+        socket.emit(SocketEvent.COMBAT_JOIN_ERROR, { message: 'Игрок не найден' });
+        return;
+      }
+      const combat = gameWorld.getCombatSystem().getCombat(data.combatId);
+      if (!combat || !combat.joinable) {
+        socket.emit(SocketEvent.COMBAT_JOIN_ERROR, { message: 'Бой не найден или к нему нельзя присоединиться' });
+        return;
+      }
+      const playerWithShip = { ...player, ship: getEffectiveShip(player) };
+      const updated = gameWorld.getCombatSystem().addPlayerToCombat(data.combatId, playerWithShip);
+      if (!updated) {
+        socket.emit(SocketEvent.COMBAT_JOIN_ERROR, { message: 'Не удалось присоединиться' });
+        return;
+      }
+      socket.join(`combat:${data.combatId}`);
+      socket.emit(SocketEvent.COMBAT_JOIN_SUCCESS, { combat: updated });
+      io.to(`combat:${data.combatId}`).emit('combat:update', { combat: updated });
     });
 
     /**
@@ -318,10 +475,92 @@ export function setupGameSocket(io: Server): void {
         const turn = data.action === 'turn' ? (data.value || 0) : 0;
         combatSystem.applyControl(data.combatId, socket.data.userId, thrust, turn, false, 0);
       } else if (data.action === 'fire' && data.weaponId) {
-        const weapon = player.ship.weapons.find(w => w.id === data.weaponId);
+        const weapon = getEffectiveShip(player).weapons.find(w => w.id === data.weaponId);
         if (weapon) {
           combatSystem.fireWeapon(data.combatId, socket.data.userId, data.weaponId, weapon);
         }
+      }
+    });
+
+    /**
+     * Начать майнинг (пояс астероидов в стиле Asteroids)
+     */
+    socket.on(SocketEvent.MINING_START, (data: { hexKey: string }) => {
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (!player) {
+        socket.emit(SocketEvent.MINING_ERROR, { message: 'Игрок не найден' });
+        return;
+      }
+      const posKey = hexKey(player.position);
+      if (posKey !== data.hexKey) {
+        socket.emit(SocketEvent.MINING_ERROR, { message: 'Вы должны находиться в этом гексе' });
+        return;
+      }
+      const map = gameWorld.getState().map;
+      const cells = map?.cells as Map<string, any> | undefined;
+      const cell = cells?.get?.(data.hexKey);
+      const hasPlanetary = cell?.systemType === 'planetary';
+      if (!hasPlanetary) {
+        socket.emit(SocketEvent.MINING_ERROR, { message: 'В этом гексе нет пояса астероидов' });
+        return;
+      }
+      const miningSystem = gameWorld.getMiningSystem();
+      const result = miningSystem.startMining(player, data.hexKey);
+      if ('error' in result) {
+        socket.emit(SocketEvent.MINING_ERROR, { message: result.error });
+        return;
+      }
+      socket.join(`mining:${result.state.sessionId}`);
+      socket.emit(SocketEvent.MINING_STARTED, { state: result.state });
+    });
+
+    /**
+     * Управление кораблём в майнинге
+     */
+    socket.on('mining:control', (data: { thrust: number; turn: number; fire: boolean; strafe?: number }) => {
+      const miningSystem = gameWorld.getMiningSystem();
+      const state = miningSystem.getSessionByPlayer(socket.data.userId);
+      if (state) {
+        miningSystem.setControl(socket.data.userId, data.thrust, data.turn, data.fire, data.strafe ?? 0);
+      }
+    });
+
+    /**
+     * Выйти из майнинга
+     */
+    socket.on(SocketEvent.MINING_EXIT, () => {
+      const player = gameWorld.getPlayer(socket.data.userId);
+      if (!player) return;
+      const miningSystem = gameWorld.getMiningSystem();
+      const state = miningSystem.getSessionByPlayer(socket.data.userId);
+      const result = miningSystem.exitMining(socket.data.userId, player);
+      if (result && state) {
+        socket.leave(`mining:${state.sessionId}`);
+        socket.emit(SocketEvent.MINING_COMPLETE, {
+          collected: result.collected,
+          cargoHold: StorageSystem.getShipCargo(player),
+        });
+      }
+    });
+
+    socket.on(SocketEvent.CARGO_DISCARD, async (data: { itemId: string; quantity: number }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.CARGO_DISCARD_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+        const cargo = StorageSystem.getShipCargo(player);
+        const qty = Math.min(data.quantity ?? 1, cargo.items.find(s => s.itemId === data.itemId)?.quantity ?? 0);
+        if (qty <= 0) {
+          socket.emit(SocketEvent.CARGO_DISCARD_ERROR, { message: 'Предмет не найден в трюме' });
+          return;
+        }
+        StorageSystem.removeFromCargo(cargo, data.itemId, qty);
+        await PlayerService.savePlayer(player);
+        socket.emit(SocketEvent.CARGO_DISCARD_SUCCESS, { cargoHold: cargo });
+      } catch (error: any) {
+        socket.emit(SocketEvent.CARGO_DISCARD_ERROR, { message: error.message || 'Ошибка выброса' });
       }
     });
 
@@ -367,9 +606,11 @@ export function setupGameSocket(io: Server): void {
         if (result.success) {
           // Отправить обновленную систему
           const system = await gameWorld.getPlanetarySystem(data.coordinates);
+          const player = gameWorld.getPlayer(socket.data.userId);
           socket.emit(SocketEvent.SYSTEM_BUILD_SUCCESS, { 
             structure: result.structure,
             system,
+            playerCredits: player?.credits,
           });
 
           // Уведомить всех об обновлении системы
@@ -406,9 +647,11 @@ export function setupGameSocket(io: Server): void {
         );
 
         if (result.success) {
+          const player = gameWorld.getPlayer(socket.data.userId);
           socket.emit(SocketEvent.SYSTEM_COLLECT_SUCCESS, {
             resources: result.resources,
             structure: result.structure,
+            playerCredits: player?.credits,
           });
 
           // Отправить обновленную систему
@@ -506,10 +749,13 @@ export function setupGameSocket(io: Server): void {
         // Получить активные задачи крафта для этой станции
         const craftingJobs = CraftingSystem.getPlayerCraftingJobs(socket.data.userId, data.stationId);
 
+        const stationQuests = await QuestService.getByStation(data.stationId, 'active');
+
         socket.emit(SocketEvent.STATION_DATA, {
           station: structure,
           cargoHold: StorageSystem.getShipCargo(player),
           craftingJobs,
+          quests: stationQuests,
         });
       } catch (error: any) {
         console.error('Ошибка открытия станции:', error);
@@ -602,9 +848,212 @@ export function setupGameSocket(io: Server): void {
           storage,
           cargoHold: StorageSystem.getShipCargo(player),
         });
+
+        if (toStation.length > 0) {
+          await gameWorld.updateQuestProgressOnDeliver(socket.data.userId, data.stationId, toStation);
+        }
       } catch (error: any) {
         console.error('Ошибка переноса грузов:', error);
         socket.emit(SocketEvent.STATION_CARGO_TRANSFER_ERROR, { message: error.message || 'Ошибка переноса грузов' });
+      }
+    });
+
+    /**
+     * Станция: пополнить кошелёк (кредиты игрока → станция)
+     */
+    socket.on(SocketEvent.STATION_WALLET_DEPOSIT, async (data: { stationId: string; amount: number }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId && s.type === StructureType.SPACE_STATION);
+        if (!structure || structure.ownerId !== player.id) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Вы не владелец станции' });
+          return;
+        }
+        const amount = Math.floor(Number(data.amount) || 0);
+        if (amount <= 0) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Некорректная сумма' });
+          return;
+        }
+        if (player.credits < amount) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Недостаточно кредитов' });
+          return;
+        }
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        storage.walletCredits = (storage.walletCredits ?? 0) + amount;
+        player.credits -= amount;
+        await StationStorageService.saveStorage(storage);
+        await PlayerService.savePlayer(player);
+        if (structure.storage) structure.storage = storage;
+        socket.emit(SocketEvent.STATION_WALLET_SUCCESS, { storage, playerCredits: player.credits });
+      } catch (error: any) {
+        socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: error.message || 'Ошибка' });
+      }
+    });
+
+    /**
+     * Станция: снять с кошелька (станция → кредиты игрока)
+     */
+    socket.on(SocketEvent.STATION_WALLET_WITHDRAW, async (data: { stationId: string; amount: number }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId && s.type === StructureType.SPACE_STATION);
+        if (!structure || structure.ownerId !== player.id) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Вы не владелец станции' });
+          return;
+        }
+        const amount = Math.floor(Number(data.amount) || 0);
+        if (amount <= 0) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Некорректная сумма' });
+          return;
+        }
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        const balance = storage.walletCredits ?? 0;
+        if (balance < amount) {
+          socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: 'Недостаточно средств на кошельке станции' });
+          return;
+        }
+        storage.walletCredits = balance - amount;
+        player.credits += amount;
+        await StationStorageService.saveStorage(storage);
+        await PlayerService.savePlayer(player);
+        if (structure.storage) structure.storage = storage;
+        socket.emit(SocketEvent.STATION_WALLET_SUCCESS, { storage, playerCredits: player.credits });
+      } catch (error: any) {
+        socket.emit(SocketEvent.STATION_WALLET_ERROR, { message: error.message || 'Ошибка' });
+      }
+    });
+
+    socket.on(SocketEvent.QUEST_LIST_GET, async () => {
+      try {
+        const quests = await QuestService.getAllActive();
+        socket.emit(SocketEvent.QUEST_LIST_DATA, { quests });
+      } catch (error: any) {
+        socket.emit(SocketEvent.QUEST_LIST_DATA, { quests: [], error: error.message });
+      }
+    });
+
+    socket.on(SocketEvent.QUEST_CREATE, async (data: { stationId: string; questType: string; target: any; rewardCredits: number }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.QUEST_CREATE_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === data.stationId && s.type === StructureType.SPACE_STATION);
+        if (!structure || structure.ownerId !== player.id) {
+          socket.emit(SocketEvent.QUEST_CREATE_ERROR, { message: 'Вы не владелец станции' });
+          return;
+        }
+        const storage = await StationStorageService.ensureStorage(data.stationId);
+        const balance = storage.walletCredits ?? 0;
+        if (balance < data.rewardCredits) {
+          socket.emit(SocketEvent.QUEST_CREATE_ERROR, { message: 'Недостаточно средств на кошельке станции' });
+          return;
+        }
+        storage.walletCredits = balance - data.rewardCredits;
+        const hexKeyStr = hexKey(player.position);
+        const quest = await QuestService.create(
+          data.stationId,
+          hexKeyStr,
+          player.id,
+          data.questType as QuestType,
+          data.target,
+          data.rewardCredits
+        );
+        if (!quest) {
+          storage.walletCredits = balance;
+          socket.emit(SocketEvent.QUEST_CREATE_ERROR, { message: 'Ошибка создания квеста' });
+          return;
+        }
+        await StationStorageService.saveStorage(storage);
+        if (structure.storage) structure.storage = storage;
+        const quests = await QuestService.getByStation(data.stationId, 'active');
+        socket.emit(SocketEvent.QUEST_CREATE_SUCCESS, { quest, quests, storage });
+      } catch (error: any) {
+        socket.emit(SocketEvent.QUEST_CREATE_ERROR, { message: error.message || 'Ошибка' });
+      }
+    });
+
+    socket.on(SocketEvent.QUEST_TAKE, async (data: { questId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.QUEST_TAKE_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+        const quest = await QuestService.getById(data.questId);
+        if (!quest || quest.status !== 'active') {
+          socket.emit(SocketEvent.QUEST_TAKE_ERROR, { message: 'Квест недоступен' });
+          return;
+        }
+        const activeQuests = player.activeQuests || [];
+        if (activeQuests.some(aq => aq.questId === data.questId)) {
+          socket.emit(SocketEvent.QUEST_TAKE_ERROR, { message: 'Вы уже взяли этот квест' });
+          return;
+        }
+        activeQuests.push({ questId: data.questId, progress: 0, kills: 0, delivered: 0 });
+        player.activeQuests = activeQuests;
+        await PlayerService.savePlayer(player);
+        socket.emit(SocketEvent.QUEST_TAKE_SUCCESS, { quest, activeQuests });
+      } catch (error: any) {
+        socket.emit(SocketEvent.QUEST_TAKE_ERROR, { message: error.message || 'Ошибка' });
+      }
+    });
+
+    socket.on(SocketEvent.QUEST_TURN_IN, async (data: { questId: string }) => {
+      try {
+        const player = gameWorld.getPlayer(socket.data.userId);
+        if (!player) {
+          socket.emit(SocketEvent.QUEST_TURN_IN_ERROR, { message: 'Игрок не найден' });
+          return;
+        }
+        const aq = player.activeQuests?.find(q => q.questId === data.questId);
+        if (!aq) {
+          socket.emit(SocketEvent.QUEST_TURN_IN_ERROR, { message: 'Квест не найден' });
+          return;
+        }
+        const quest = await QuestService.getById(data.questId);
+        if (!quest || quest.status !== 'active') {
+          socket.emit(SocketEvent.QUEST_TURN_IN_ERROR, { message: 'Квест недоступен' });
+          return;
+        }
+        const target = quest.target;
+        const complete = quest.questType === QuestType.KILL_ENEMIES
+          ? (aq.kills ?? 0) >= (target.killCount ?? 0)
+          : (aq.delivered ?? 0) >= (target.deliverQuantity ?? 0);
+        if (!complete) {
+          socket.emit(SocketEvent.QUEST_TURN_IN_ERROR, { message: 'Квест не выполнен' });
+          return;
+        }
+        const storage = await StationStorageService.ensureStorage(quest.stationId);
+        const balance = storage.walletCredits ?? 0;
+        if (balance < quest.rewardCredits) {
+          socket.emit(SocketEvent.QUEST_TURN_IN_ERROR, { message: 'Недостаточно средств на кошельке станции' });
+          return;
+        }
+        storage.walletCredits = balance - quest.rewardCredits;
+        player.credits += quest.rewardCredits;
+        player.activeQuests = player.activeQuests?.filter(q => q.questId !== data.questId) || [];
+        await QuestService.setStatus(data.questId, 'completed');
+        await StationStorageService.saveStorage(storage);
+        await PlayerService.savePlayer(player);
+        const system = await gameWorld.getPlanetarySystem(player.position);
+        const structure = system?.structures.find(s => s.id === quest.stationId && s.type === StructureType.SPACE_STATION);
+        if (structure?.storage) structure.storage = storage;
+        socket.emit(SocketEvent.QUEST_TURN_IN_SUCCESS, { quest, playerCredits: player.credits, activeQuests: player.activeQuests, storage });
+      } catch (error: any) {
+        socket.emit(SocketEvent.QUEST_TURN_IN_ERROR, { message: error.message || 'Ошибка' });
       }
     });
 
@@ -1016,7 +1465,7 @@ export function setupGameSocket(io: Server): void {
 
         socket.emit(SocketEvent.STATION_MARKET_ORDER_EXECUTE_SUCCESS, {
           order: structure.marketOrders.find(o => o.id === data.orderId),
-          playerResources: player.resources,
+          playerCredits: player.credits,
         });
       } catch (error: any) {
         console.error('Ошибка выполнения ордера:', error);
@@ -1049,6 +1498,7 @@ export function setupGameSocket(io: Server): void {
  * Сериализация состояния игры для отправки клиенту
  */
 function serializeGameState(state: any) {
+  const invasions = gameWorld.getInvasionSystem().getAllActive();
   return {
     id: state.id,
     phase: state.phase,
@@ -1062,6 +1512,12 @@ function serializeGameState(state: any) {
     players: Array.from(state.players.entries() as IterableIterator<[any, any]>).map(([key, player]) =>
       serializePlayer(player)
     ),
+    invasions: invasions.map(i => ({
+      id: i.id,
+      sourceHexKey: i.sourceHexKey,
+      neighborHexKeys: i.neighborHexKeys,
+      enemyCountPerHex: i.enemyCountPerHex,
+    })),
   };
 }
 
@@ -1076,6 +1532,8 @@ function serializePlayer(player: any) {
     position: player.position,
     ship,
     resources: player.resources,
+    credits: player.credits ?? 1000,
+    activeQuests: player.activeQuests ?? [],
     experience: player.experience,
     level: player.level,
     online: player.online,

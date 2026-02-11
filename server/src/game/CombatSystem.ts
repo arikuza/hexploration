@@ -8,6 +8,7 @@ import {
   ShipType,
   Ship,
   Weapon,
+  hexKey,
 } from '@hexploration/shared';
 import { 
   COMBAT_ARENA_WIDTH, 
@@ -20,13 +21,16 @@ import {
   SHIP_HIT_RADIUS,
   BOT_MAX_SPEED,
   BOT_ACCELERATION,
+  BOT_TURN_RATE,
   SHIP_ENERGY_REGEN,
   BOT_ENERGY_REGEN,
   BOT_WEAPON_COOLDOWN_MULTIPLIER,
   BOOST_SPEED_MULTIPLIER,
   BOOST_ACCELERATION_MULTIPLIER,
   BOOST_ENERGY_COST,
-  BOOST_MIN_ENERGY
+  BOOST_MIN_ENERGY,
+  SHIP_STATS,
+  SHIP_TURN_RATE,
 } from '@hexploration/shared';
 import { v4 as uuidv4 } from 'uuid';
 import { NPCBot } from './NPCBot.js';
@@ -44,21 +48,44 @@ export class CombatSystem {
   }
 
   /**
+   * Создать CombatShip с учётом характеристик participant.ship
+   */
+  private createCombatShip(participant: Player, index: number, total: number): CombatShip {
+    const s = participant.ship;
+    const isBot = participant.id.startsWith('bot_') || participant.id.startsWith('invader_');
+    const baseStats = SHIP_STATS[s.type as keyof typeof SHIP_STATS] ?? SHIP_STATS.fighter;
+    const speedMult = s.speed / baseStats.speed;
+    const turnMult = s.turnRate / baseStats.turnRate;
+    const cs = {
+      playerId: participant.id,
+      position: this.getStartPosition(index, total),
+      velocity: { x: 0, y: 0 },
+      rotation: index === 0 ? Math.PI : 0,
+      angularVelocity: 0,
+      health: s.health,
+      energy: s.energy,
+      weaponCooldowns: new Map(),
+      maxSpeed: SHIP_MAX_SPEED * speedMult,
+      turnRate: SHIP_TURN_RATE * turnMult,
+      maxHealth: s.maxHealth,
+      maxEnergy: s.maxEnergy,
+      acceleration: isBot ? BOT_ACCELERATION : SHIP_ACCELERATION,
+    };
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CombatSystem.ts:createCombatShip',message:'createCombatShip result',data:{playerId:participant.id,health:cs.health,maxHealth:cs.maxHealth,energy:cs.energy,maxEnergy:cs.maxEnergy},timestamp:Date.now(),hypothesisId:'H-C',runId:'post-fix'})}).catch(()=>{});
+    // #endregion
+    return cs;
+  }
+
+  /**
    * Начать бой между игроками
    */
   startCombat(participants: Player[]): CombatState {
     const combatId = uuidv4();
     
-    const ships: CombatShip[] = participants.map((player, index) => ({
-      playerId: player.id,
-      position: this.getStartPosition(index, participants.length),
-      velocity: { x: 0, y: 0 },
-      rotation: index === 0 ? Math.PI : 0, // Смотрят друг на друга
-      angularVelocity: 0,
-      health: player.ship.health,
-      energy: player.ship.energy,
-      weaponCooldowns: new Map(),
-    }));
+    const ships: CombatShip[] = participants.map((player, index) =>
+      this.createCombatShip(player, index, participants.length)
+    );
 
     const combat: CombatState = {
       id: combatId,
@@ -90,22 +117,29 @@ export class CombatSystem {
   }
 
   /**
+   * Базовые характеристики бота (без бонусов прокачки игрока)
+   */
+  private getBotBaseStats() {
+    const stats = SHIP_STATS.fighter;
+    return { maxHealth: stats.maxHealth, maxEnergy: stats.maxEnergy, speed: stats.speed, turnRate: stats.turnRate };
+  }
+
+  /**
    * Начать бой с NPC-ботом
    */
   startCombatWithBot(player: Player): CombatState {
     const botId = 'bot_' + uuidv4();
-    
-    // Создать бота с такими же характеристиками как у игрока
+    const base = this.getBotBaseStats();
     const botShip: Ship = {
       id: uuidv4(),
       name: 'Combat Bot',
       type: ShipType.FIGHTER,
-      health: player.ship.maxHealth,
-      maxHealth: player.ship.maxHealth,
-      energy: player.ship.maxEnergy,
-      maxEnergy: player.ship.maxEnergy,
-      speed: player.ship.speed,
-      turnRate: player.ship.turnRate,
+      health: base.maxHealth,
+      maxHealth: base.maxHealth,
+      energy: base.maxEnergy,
+      maxEnergy: base.maxEnergy,
+      speed: base.speed,
+      turnRate: base.turnRate,
       weapons: DEFAULT_WEAPONS,
     };
 
@@ -115,6 +149,7 @@ export class CombatSystem {
       position: player.position,
       ship: botShip,
       resources: 0,
+      credits: 0,
       experience: 0,
       level: 1,
       online: true,
@@ -124,10 +159,139 @@ export class CombatSystem {
 
     // Создать бой
     const combat = this.startCombat([player, botPlayer]);
+    combat.combatType = 'bot';
 
     // Создать AI для бота
-    this.bots.set(combat.id, new NPCBot(combat.id, botId));
+    this.bots.set(`${combat.id}:${botId}`, new NPCBot(combat.id, botId));
 
+    return combat;
+  }
+
+  /**
+   * Начать бой с несколькими NPC-ботами (1–3 в зависимости от УУ)
+   */
+  startCombatWithBots(player: Player, botCount: number): CombatState {
+    botCount = Math.max(1, Math.min(3, Math.round(botCount)));
+    const participants: Player[] = [player];
+
+    const base = this.getBotBaseStats();
+    for (let i = 0; i < botCount; i++) {
+      const botId = 'bot_' + uuidv4();
+      const botShip: Ship = {
+        id: uuidv4(),
+        name: 'Combat Bot',
+        type: ShipType.FIGHTER,
+        health: base.maxHealth,
+        maxHealth: base.maxHealth,
+        energy: base.maxEnergy,
+        maxEnergy: base.maxEnergy,
+        speed: base.speed,
+        turnRate: base.turnRate,
+        weapons: DEFAULT_WEAPONS,
+      };
+      const botPlayer: Player = {
+        id: botId,
+        username: `Бот ${i + 1}`,
+        position: player.position,
+        ship: botShip,
+        resources: 0,
+        credits: 0,
+        experience: 0,
+        level: 1,
+        online: true,
+        moveTimer: 0,
+        canMove: true,
+      };
+      participants.push(botPlayer);
+    }
+
+    const combat = this.startCombat(participants);
+    combat.combatType = 'bot';
+    combat.hexKey = hexKey(player.position);
+
+    participants.forEach(p => {
+      if (p.id.startsWith('bot_')) {
+        this.bots.set(`${combat.id}:${p.id}`, new NPCBot(combat.id, p.id));
+      }
+    });
+
+    return combat;
+  }
+
+  /**
+   * Начать бой с инвайдерами (вторжение)
+   */
+  startCombatInvasion(
+    player: Player,
+    hexKeyStr: string,
+    invasionId: string,
+    enemyCount: number
+  ): CombatState {
+    const participants: Player[] = [player];
+    const invaderIds: string[] = [];
+
+    const base = this.getBotBaseStats();
+    for (let i = 0; i < enemyCount; i++) {
+      const invaderId = 'invader_' + uuidv4();
+      invaderIds.push(invaderId);
+      const invaderShip: Ship = {
+        id: uuidv4(),
+        name: 'Инвайдер',
+        type: ShipType.FIGHTER,
+        health: base.maxHealth * 0.8,
+        maxHealth: base.maxHealth * 0.8,
+        energy: base.maxEnergy,
+        maxEnergy: base.maxEnergy,
+        speed: base.speed * 0.9,
+        turnRate: base.turnRate,
+        weapons: DEFAULT_WEAPONS,
+      };
+      const invaderPlayer: Player = {
+        id: invaderId,
+        username: 'Инвайдер',
+        position: player.position,
+        ship: invaderShip,
+        resources: 0,
+        credits: 0,
+        experience: 0,
+        level: 1,
+        online: true,
+        moveTimer: 0,
+        canMove: true,
+      };
+      participants.push(invaderPlayer);
+    }
+
+    const combat = this.startCombat(participants);
+    combat.hexKey = hexKeyStr;
+    combat.combatType = 'invasion';
+    combat.invasionId = invasionId;
+    combat.joinable = true;
+    combat.maxParticipants = 4;
+
+    participants.forEach(p => {
+      if (p.id.startsWith('invader_')) {
+        this.bots.set(`${combat.id}:${p.id}`, new NPCBot(combat.id, p.id));
+      }
+    });
+
+    return combat;
+  }
+
+  /**
+   * Добавить игрока в существующий бой (присоединиться)
+   */
+  addPlayerToCombat(combatId: string, player: Player): CombatState | null {
+    const combat = this.combats.get(combatId);
+    if (!combat || !combat.joinable) return null;
+    if (combat.maxParticipants && combat.participants.length >= combat.maxParticipants) return null;
+    if (combat.participants.includes(player.id)) return null;
+
+    const ship = this.createCombatShip(player, combat.participants.length, combat.participants.length + 1);
+    ship.rotation = Math.PI / 2;
+
+    combat.participants.push(player.id);
+    combat.ships.push(ship);
     return combat;
   }
 
@@ -151,8 +315,8 @@ export class CombatSystem {
       
       // Применить стрейф каждый кадр физики ДО обновления позиции
       if (strafeValue !== 0) {
-        let acceleration = isBot ? BOT_ACCELERATION : SHIP_ACCELERATION;
-        let maxSpeed = isBot ? BOT_MAX_SPEED : SHIP_MAX_SPEED;
+        let acceleration = ship.acceleration ?? (isBot ? BOT_ACCELERATION : SHIP_ACCELERATION);
+        let maxSpeed = ship.maxSpeed ?? (isBot ? BOT_MAX_SPEED : SHIP_MAX_SPEED);
         
         // Применить ускорение (boost) если активно
         if (isBoostActive && ship.energy >= BOOST_MIN_ENERGY) {
@@ -199,7 +363,8 @@ export class CombatSystem {
         energyChange -= BOOST_ENERGY_COST * deltaTime;
       }
       
-      ship.energy = Math.max(0, Math.min(ship.energy + energyChange, SHIP_MAX_ENERGY));
+      const maxEnergy = ship.maxEnergy ?? SHIP_MAX_ENERGY;
+      ship.energy = Math.max(0, Math.min(ship.energy + energyChange, maxEnergy));
     });
 
     // Обновить снаряды
@@ -216,6 +381,13 @@ export class CombatSystem {
       return proj.lifetime > 0;
     });
 
+    // Удалить мёртвых инвайдеров
+    if (combat.combatType === 'invasion') {
+      const deadInvaders = combat.ships.filter(s => s.health <= 0 && s.playerId.startsWith('invader_'));
+      combat.ships = combat.ships.filter(s => s.health > 0);
+      deadInvaders.forEach(s => this.bots.delete(`${combatId}:${s.playerId}`));
+    }
+
     // Обновить кулдауны
     combat.ships.forEach(ship => {
       ship.weaponCooldowns.forEach((cooldown, weaponId) => {
@@ -228,19 +400,18 @@ export class CombatSystem {
       });
     });
 
-    // Обработать AI бота
-    const bot = this.bots.get(combatId);
-    if (bot && combat.ships.length >= 2) {
+    // Обработать AI всех ботов
+    this.bots.forEach((bot, key) => {
+      if (!key.startsWith(`${combatId}:`)) return;
       const botShip = combat.ships.find(s => s.playerId === bot.playerId);
-      const playerShip = combat.ships.find(s => s.playerId !== bot.playerId);
+      const playerShips = combat.ships.filter(s => !s.playerId.startsWith('bot_') && !s.playerId.startsWith('invader_'));
+      const playerShip = playerShips[0];
 
       if (botShip && playerShip) {
         const actions = bot.decideActions(combat, botShip, playerShip);
         
-        // Применить управление
         this.applyControl(combatId, bot.playerId, actions.thrust, actions.turn, false, 0);
         
-        // Стрелять если нужно
         if (actions.fire && actions.weaponId) {
           const weapon = DEFAULT_WEAPONS.find(w => w.id === actions.weaponId);
           if (weapon) {
@@ -248,7 +419,7 @@ export class CombatSystem {
           }
         }
       }
-    }
+    });
 
     return combat;
   }
@@ -282,7 +453,7 @@ export class CombatSystem {
       );
 
       if (distance < SHIP_HIT_RADIUS) {
-        ship.health -= projectile.damage;
+        ship.health = Math.max(0, ship.health - projectile.damage);
         return true; // Попадание
       }
     }
@@ -379,8 +550,8 @@ export class CombatSystem {
 
     // Определить является ли корабль ботом
     const isBot = playerId.startsWith('bot_') || playerId.startsWith('BOT_');
-    let acceleration = isBot ? BOT_ACCELERATION : SHIP_ACCELERATION;
-    let maxSpeed = isBot ? BOT_MAX_SPEED : SHIP_MAX_SPEED;
+    let acceleration = ship.acceleration ?? (isBot ? BOT_ACCELERATION : SHIP_ACCELERATION);
+    let maxSpeed = ship.maxSpeed ?? (isBot ? BOT_MAX_SPEED : SHIP_MAX_SPEED);
 
     // Применить ускорение (boost) если активно и есть энергия
     let boostActive = false;
@@ -390,8 +561,9 @@ export class CombatSystem {
       boostActive = true;
     }
 
-    // Применить поворот
-    ship.angularVelocity = turn;
+    // Применить поворот (ограничить угловую скорость по turnRate корабля)
+    const turnRate = ship.turnRate ?? (isBot ? BOT_TURN_RATE : SHIP_TURN_RATE);
+    ship.angularVelocity = Math.max(-turnRate, Math.min(turnRate, turn));
 
     // Применить тягу
     const thrustX = Math.cos(ship.rotation) * thrust;
@@ -433,19 +605,39 @@ export class CombatSystem {
   }
 
   /**
+   * Список активных боёв (для отображения и подключения)
+   */
+  getActiveCombats(hexKeyFilter?: string): Array<{ combatId: string; hexKey: string; combatType: string; participantsCount: number; maxParticipants?: number }> {
+    const result: Array<{ combatId: string; hexKey: string; combatType: string; participantsCount: number; maxParticipants?: number }> = [];
+    this.combats.forEach((combat, combatId) => {
+      if (combat.hexKey && combat.joinable) {
+        if (hexKeyFilter && combat.hexKey !== hexKeyFilter) return;
+        result.push({
+          combatId,
+          hexKey: combat.hexKey,
+          combatType: combat.combatType || 'unknown',
+          participantsCount: combat.participants.filter(p => !p.startsWith('invader_')).length,
+          maxParticipants: combat.maxParticipants,
+        });
+      }
+    });
+    return result;
+  }
+
+  /**
    * Завершить бой
    */
   endCombat(combatId: string): void {
-    // Очистить все boost состояния для этого боя
     const keysToDelete: string[] = [];
     this.boostStates.forEach((_, key) => {
-      if (key.startsWith(`${combatId}:`)) {
-        keysToDelete.push(key);
-      }
+      if (key.startsWith(`${combatId}:`)) keysToDelete.push(key);
     });
     keysToDelete.forEach(key => this.boostStates.delete(key));
     
+    this.bots.forEach((_, key) => {
+      if (key.startsWith(`${combatId}:`)) this.bots.delete(key);
+    });
+    
     this.combats.delete(combatId);
-    this.bots.delete(combatId);
   }
 }

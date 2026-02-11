@@ -18,6 +18,8 @@ export interface Skill {
   category: SkillCategory;
   maxLevel: number; // 1-5 (уровни I-V)
   description: string;
+  /** Бонусы по уровням (I–V) для тултипа */
+  levelBonuses?: string;
   /** SP в час при обучении (для расчёта прогресса) */
   spPerHour: number;
   /** SP, требуемые для перехода на уровень (индекс = уровень 1..5) */

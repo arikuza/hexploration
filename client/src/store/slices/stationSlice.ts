@@ -7,6 +7,7 @@ import {
   CraftingJob,
   MarketOrder,
 } from '@hexploration/shared';
+import type { Quest } from '@hexploration/shared';
 
 interface StationState {
   currentStation: SpaceStructure | null;
@@ -15,6 +16,7 @@ interface StationState {
   recipes: Recipe[];
   craftingJobs: CraftingJob[];
   marketOrders: MarketOrder[];
+  quests: Quest[];
   loading: boolean;
   error: string | null;
 }
@@ -26,6 +28,7 @@ const initialState: StationState = {
   recipes: [],
   craftingJobs: [],
   marketOrders: [],
+  quests: [],
   loading: false,
   error: null,
 };
@@ -78,6 +81,9 @@ const stationSlice = createSlice({
     removeMarketOrder: (state, action: PayloadAction<string>) => {
       state.marketOrders = state.marketOrders.filter(o => o.id !== action.payload);
     },
+    setQuests: (state, action: PayloadAction<Quest[]>) => {
+      state.quests = action.payload;
+    },
     updateMarketOrder: (state, action: PayloadAction<MarketOrder>) => {
       const index = state.marketOrders.findIndex(o => o.id === action.payload.id);
       if (index >= 0) {
@@ -97,6 +103,7 @@ const stationSlice = createSlice({
       state.recipes = [];
       state.craftingJobs = [];
       state.marketOrders = [];
+      state.quests = [];
       state.error = null;
     },
   },
@@ -111,6 +118,7 @@ export const {
   addCraftingJob,
   removeCraftingJob,
   updateCraftingProgress,
+  setQuests,
   setMarketOrders,
   addMarketOrder,
   removeMarketOrder,

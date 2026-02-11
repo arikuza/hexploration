@@ -8,8 +8,11 @@ import { SkillsPanel } from '../components/ui/SkillsPanel';
 import { IconPanel } from '../components/ui/IconPanel';
 import { HexInfo } from '../components/ui/HexInfo';
 import { CombatView } from '../components/combat/CombatView';
+import { MiningView } from '../components/mining/MiningView';
 import { PlanetarySystemView } from '../components/planetary/PlanetarySystemView';
 import StationPanel from '../components/station/StationPanel';
+import { QuestView } from '../components/station/QuestView';
+import { CargoPanel } from '../components/ui/CargoPanel';
 import { HexCoordinates } from '@hexploration/shared';
 import './GamePage.css';
 import '../components/ui/HexInfo.css';
@@ -20,10 +23,13 @@ function GamePage() {
   const { connected } = useAppSelector((state) => state.game);
   const { currentPlayer } = useAppSelector((state) => state.player);
   const { inCombat } = useAppSelector((state) => state.combat);
+  const { inMining } = useAppSelector((state) => state.mining);
   const [selectedHex, setSelectedHex] = useState<HexCoordinates | null>(null);
   const [planetarySystemHex, setPlanetarySystemHex] = useState<HexCoordinates | null>(null);
   const [showSkillsPanel, setShowSkillsPanel] = useState(false);
   const [openStationId, setOpenStationId] = useState<string | null>(null);
+  const [showQuestPanel, setShowQuestPanel] = useState(false);
+  const [showCargoPanel, setShowCargoPanel] = useState(false);
 
   // Автоматически выбрать гекс текущего игрока при загрузке
   useEffect(() => {
@@ -44,6 +50,11 @@ function GamePage() {
   // Показать экран боя если в бою
   if (inCombat) {
     return <CombatView />;
+  }
+
+  // Показать экран майнинга если в майнинге
+  if (inMining) {
+    return <MiningView />;
   }
 
   return (
@@ -78,6 +89,8 @@ function GamePage() {
         selectedHex={selectedHex} 
         onOpenPlanetarySystem={setPlanetarySystemHex}
         onOpenStation={setOpenStationId}
+        onOpenQuestPanel={() => setShowQuestPanel(true)}
+        onOpenCargoPanel={() => setShowCargoPanel(true)}
       />
       
       {/* Модальное окно планетарной системы — на уровне GamePage, поверх всего */}
@@ -97,6 +110,42 @@ function GamePage() {
               onClose={() => setPlanetarySystemHex(null)}
               onOpenStation={setOpenStationId}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно квестов */}
+      {showQuestPanel && (
+        <div
+          className="station-modal"
+          onClick={() => setShowQuestPanel(false)}
+          role="dialog"
+          aria-label="Квесты"
+        >
+          <div
+            className="station-modal__box"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <QuestView />
+            <button className="close-mining-btn" style={{ marginTop: 16 }} onClick={() => setShowQuestPanel(false)}>Закрыть</button>
+          </div>
+        </div>
+      )}
+
+      {/* Модальное окно трюма */}
+      {showCargoPanel && (
+        <div
+          className="station-modal"
+          onClick={() => setShowCargoPanel(false)}
+          role="dialog"
+          aria-label="Трюм"
+        >
+          <div
+            className="station-modal__box"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <CargoPanel />
+            <button className="close-mining-btn" style={{ marginTop: 16 }} onClick={() => setShowCargoPanel(false)}>Закрыть</button>
           </div>
         </div>
       )}

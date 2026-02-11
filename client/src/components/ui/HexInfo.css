@@ -1,15 +1,15 @@
 .hex-info {
   position: fixed;
   left: 20px;
+  top: 100px;
   bottom: 20px;
   width: 320px;
-  background: rgba(20, 30, 48, 0.95);
-  border: 2px solid rgba(100, 150, 255, 0.3);
-  border-radius: 8px;
-  padding: 16px;
+  background: linear-gradient(180deg, rgba(18, 25, 45, 0.97) 0%, rgba(12, 18, 35, 0.98) 100%);
+  border: 1px solid rgba(100, 150, 255, 0.25);
+  border-radius: 12px;
+  padding: 20px;
   color: #e0e0e0;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-  max-height: 50vh;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
   overflow-y: auto;
   z-index: 5;
 }
@@ -158,6 +158,41 @@
   transform: translateY(0);
 }
 
+.active-combats-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.active-combats-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: rgba(255, 107, 107, 0.1);
+  border-radius: 4px;
+  border-left: 3px solid rgba(255, 107, 107, 0.5);
+}
+
+.join-combat-btn {
+  padding: 6px 12px;
+  font-size: 13px;
+  background: linear-gradient(135deg, #ff6b6b 0%, #ee5a52 100%);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.join-combat-btn:hover {
+  background: linear-gradient(135deg, #ee5a52 0%, #ff6b6b 100%);
+  transform: translateY(-1px);
+}
+
 .colonize-button {
   width: 100%;
   padding: 12px 16px;
@@ -227,6 +262,24 @@
 
 .hex-open-system-btn {
   margin-bottom: 8px;
+}
+
+.hex-mining-btn {
+  margin-top: 8px;
+}
+
+.hex-buttons-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.hex-quest-btn {
+  margin-bottom: 0;
+}
+
+.hex-cargo-btn {
+  margin-top: 0;
 }
 
 .hex-planetary-view-wrap {

@@ -20,6 +20,8 @@ import {
   MOVE_COOLDOWN, 
   hexDistance,
   hexKey,
+  keyToHex,
+  hexNeighbors,
   DEFAULT_WEAPONS,
   STRUCTURE_COSTS,
   STRUCTURE_BUILD_TIMES,
@@ -29,14 +31,19 @@ import {
 } from '@hexploration/shared';
 import { HexMapManager } from './HexMap.js';
 import { CombatSystem } from './CombatSystem.js';
+import { InvasionSystem } from './InvasionSystem.js';
+import { MiningSystem } from './MiningSystem.js';
 import { v4 as uuidv4 } from 'uuid';
 import { Server } from 'socket.io';
 import { GameWorldService } from '../database/services/GameWorldService.js';
+import { InvasionService } from '../database/services/InvasionService.js';
 import { PlayerService } from '../database/services/PlayerService.js';
 import { PlanetarySystemService } from '../database/services/PlanetarySystemService.js';
 import { recalcPlayerSkills, setSkillQueue as setSkillQueueImpl, createEmptySkills } from './SkillSystem.js';
 import { CraftingSystem } from './CraftingSystem.js';
 import { StationStorageService } from '../database/services/StationStorageService.js';
+import { QuestService } from '../database/services/QuestService.js';
+import { QuestType } from '@hexploration/shared';
 import { StorageSystem } from './StorageSystem.js';
 import type { PlayerSkills } from '@hexploration/shared';
 import type { SkillQueueItem } from '@hexploration/shared';
@@ -45,6 +52,8 @@ class GameWorld {
   private state: GameState;
   private hexMap: HexMapManager;
   private combatSystem: CombatSystem;
+  private invasionSystem: InvasionSystem;
+  private miningSystem: MiningSystem;
   private timerInterval: NodeJS.Timeout | null = null;
   private io: Server | null = null;
   private saveInterval: NodeJS.Timeout | null = null;
@@ -53,6 +62,8 @@ class GameWorld {
   constructor() {
     this.hexMap = new HexMapManager(MAP_RADIUS);
     this.combatSystem = new CombatSystem();
+    this.invasionSystem = new InvasionSystem();
+    this.miningSystem = new MiningSystem();
 
     this.state = {
       id: uuidv4(),
@@ -90,6 +101,10 @@ class GameWorld {
       await this.hexMap.generateAllPlanetarySystems();
     }
 
+    // Загрузить вторжения из БД
+    const invasions = await InvasionService.loadInvasions();
+    this.invasionSystem.loadInvasions(invasions);
+
     this.startTimerUpdates();
     this.startAutoSave();
     this.initialized = true;
@@ -111,6 +126,8 @@ class GameWorld {
   async saveWorld(): Promise<void> {
     await GameWorldService.saveWorld(this.state.phase, this.hexMap.getMap());
     await PlayerService.saveAllPlayers(this.state.players);
+    const invasions = this.invasionSystem.getAllActive();
+    await InvasionService.saveInvasions(invasions);
   }
 
   /**
@@ -121,19 +138,34 @@ class GameWorld {
       this.updatePlayerTimers();
     }, 100); // Обновлять каждые 100ms
 
+    // Рассылка обновлений майнинга каждые 50ms
+    setInterval(() => {
+      if (!this.io) return;
+      const sessions = this.miningSystem.getAllSessions();
+      for (const [sessionId, state] of sessions) {
+        this.io.to(`mining:${sessionId}`).emit(SocketEvent.MINING_UPDATE, { state });
+      }
+    }, 50);
+
     // Запустить проверку деградации колоний каждые 10 секунд
     setInterval(async () => {
-      const decayed = this.hexMap.checkColonyDecay();
+      const { decayed, invasionSources } = this.hexMap.checkColonyDecay();
+      // Запустить вторжения для систем, где УУ упал до 0
+      for (const coords of invasionSources) {
+        this.invasionSystem.startInvasion(coords);
+      }
       // Если произошла деградация, сохранить изменения и уведомить клиентов
-      if (decayed) {
+      if (decayed || invasionSources.length > 0) {
         console.log('💾 [DECAY] Сохранение изменений после деградации колоний...');
         await this.saveWorld();
         
-        // Уведомить всех клиентов об обновлении карты
         if (this.io) {
           const state = this.getState();
+          const invasions = this.invasionSystem.getAllActive();
           this.io.emit(SocketEvent.GAME_UPDATE, {
-            type: 'colony_decayed',
+            type: decayed ? 'colony_decayed' : 'invasion_started',
+            invasionSources: invasionSources.map(c => ({ q: c.q, r: c.r })),
+            invasions: invasions.map(i => ({ id: i.id, sourceHexKey: i.sourceHexKey, neighborHexKeys: i.neighborHexKeys, enemyCountPerHex: i.enemyCountPerHex })),
             map: {
               radius: state.map.radius,
               cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
@@ -142,10 +174,90 @@ class GameWorld {
               })),
             },
           });
-          console.log('📡 [DECAY] Отправлено обновление карты клиентам после деградации');
+          console.log('📡 [DECAY] Отправлено обновление карты клиентам');
         }
       }
     }, 10000);
+
+    // Проверка таймаута вторжений: если не закрыто за 30 минут — система захвачена, станция уничтожается
+    const INVASION_TIMEOUT_MS = 30 * 60 * 1000;
+    setInterval(async () => {
+      const captured = await this.checkInvasionTimeouts(INVASION_TIMEOUT_MS);
+      if (captured.length > 0) {
+        await this.saveWorld();
+        if (this.io) {
+          const state = this.getState();
+          const invasions = this.invasionSystem.getAllActive();
+          this.io.emit(SocketEvent.GAME_UPDATE, {
+            type: 'invasion_captured',
+            capturedHexKeys: captured,
+            invasions: invasions.map(i => ({ id: i.id, sourceHexKey: i.sourceHexKey, neighborHexKeys: i.neighborHexKeys, enemyCountPerHex: i.enemyCountPerHex })),
+            map: {
+              radius: state.map.radius,
+              cells: Array.from(state.map.cells.entries() as IterableIterator<[any, any]>).map(([key, cell]) => ({
+                key,
+                ...cell,
+              })),
+            },
+          });
+          console.log('📡 [INVASION] Отправлено уведомление о захвате систем:', captured);
+        }
+      }
+    }, 60000); // Проверка каждую минуту
+  }
+
+  /**
+   * Проверить вторжения на таймаут; если не закрыто за timeoutMs — станция уничтожается
+   * @returns список hexKey захваченных систем
+   */
+  private async checkInvasionTimeouts(timeoutMs: number): Promise<string[]> {
+    const now = Date.now();
+    const captured: string[] = [];
+
+    for (const inv of this.invasionSystem.getAllActive()) {
+      if (now - inv.startTime < timeoutMs) continue;
+
+      const sourceCoords = keyToHex(inv.sourceHexKey);
+      const cell = this.hexMap.getCell(sourceCoords);
+      if (!cell || !cell.owner || cell.owner === 'npc') continue;
+
+      const success = await this.destroyStationOnCapture(sourceCoords, cell.owner);
+      if (success) {
+        this.invasionSystem.clearInvasion(inv.sourceHexKey);
+        captured.push(inv.sourceHexKey);
+        console.log(`🚨 [INVASION] Система [${sourceCoords.q}, ${sourceCoords.r}] захвачена (таймаут 30 мин). Станция уничтожена.`);
+      }
+    }
+
+    return captured;
+  }
+
+  /**
+   * Уничтожить станцию игрока при захвате системы инвайдерами
+   */
+  private async destroyStationOnCapture(coordinates: HexCoordinates, ownerId: string): Promise<boolean> {
+    const cell = this.hexMap.getCell(coordinates);
+    if (!cell || !cell.planetarySystemId) return false;
+
+    const system = await PlanetarySystemService.loadByHexKey(cell.planetarySystemId);
+    if (!system) return false;
+
+    const stationIndex = system.structures.findIndex(
+      s => s.type === StructureType.SPACE_STATION && s.ownerId === ownerId
+    );
+    if (stationIndex < 0) return false;
+
+    const station = system.structures[stationIndex]!;
+    system.structures.splice(stationIndex, 1);
+    await PlanetarySystemService.save(system);
+    await StationStorageService.deleteStorage(station.id);
+
+    cell.owner = undefined;
+    cell.hasStation = false;
+    cell.threat = 0;
+    this.hexMap.recalculateAllInfluences();
+
+    return true;
   }
 
   /**
@@ -282,6 +394,7 @@ class GameWorld {
         position: startPosition,
         ship,
         resources: 100,
+        credits: 1000,
         experience: 0,
         level: 1,
         online: true,
@@ -474,8 +587,16 @@ class GameWorld {
   /**
    * Получить систему боя
    */
+  getInvasionSystem(): InvasionSystem {
+    return this.invasionSystem;
+  }
+
   getCombatSystem(): CombatSystem {
     return this.combatSystem;
+  }
+
+  getMiningSystem(): MiningSystem {
+    return this.miningSystem;
   }
 
   /**
@@ -675,9 +796,9 @@ class GameWorld {
     const type = structureType as StructureType;
     const cost = STRUCTURE_COSTS[type];
     
-    // Проверить ресурсы игрока (пока только credits, потом расширим систему ресурсов)
-    if (player.resources < cost.credits) {
-      return { success: false, error: `Недостаточно кредитов. Требуется: ${cost.credits}, есть: ${player.resources}` };
+    // Проверить кредиты игрока
+    if (player.credits < cost.credits) {
+      return { success: false, error: `Недостаточно кредитов. Требуется: ${cost.credits}, есть: ${player.credits}` };
     }
     // TODO: Проверка минералов и других ресурсов когда расширим систему
 
@@ -719,8 +840,8 @@ class GameWorld {
       structure.marketOrders = [];
     }
 
-    // Списисать ресурсы
-    player.resources -= cost.credits;
+    // Списывать кредиты и минералы
+    player.credits -= cost.credits;
     if (cost.minerals) {
       player.resources -= cost.minerals;
     }
@@ -785,8 +906,8 @@ class GameWorld {
     const collectedAmount = structure.extraction.currentAmount;
     structure.extraction.currentAmount = 0;
 
-    // Добавить ресурсы игроку (пока просто credits, потом расширим)
-    player.resources += collectedAmount;
+    // Добавить кредиты игроку за собранные ресурсы
+    player.credits += collectedAmount;
 
     // Сохранить систему
     await PlanetarySystemService.save(system);
@@ -799,6 +920,38 @@ class GameWorld {
       resources: { credits: collectedAmount },
       structure,
     };
+  }
+
+  /**
+   * Обновить прогресс квестов при доставке ресурсов на станцию
+   */
+  async updateQuestProgressOnDeliver(playerId: string, _stationId: string, transfers: { itemId: string; quantity: number }[]): Promise<void> {
+    const player = this.state.players.get(playerId);
+    if (!player?.activeQuests) return;
+    for (const t of transfers) {
+      for (const aq of player.activeQuests) {
+        const quest = await QuestService.getById(aq.questId);
+        if (quest?.questType === QuestType.DELIVER_RESOURCES && quest.target.itemId === t.itemId) {
+          aq.delivered = (aq.delivered ?? 0) + t.quantity;
+          aq.progress = Math.min(100, ((aq.delivered ?? 0) / (quest.target.deliverQuantity ?? 1)) * 100);
+        }
+      }
+    }
+  }
+
+  /**
+   * Обновить прогресс квестов при убийстве врагов (ботов или инвайдеров).
+   * Убийства учитываются в любом гексе.
+   */
+  async updateQuestProgressOnKill(playerId: string, _combatHexKey: string, killCount: number): Promise<void> {
+    const player = this.state.players.get(playerId);
+    if (!player?.activeQuests) return;
+    for (const aq of player.activeQuests) {
+      const quest = await QuestService.getById(aq.questId);
+      if (quest?.questType !== QuestType.KILL_ENEMIES) continue;
+      aq.kills = (aq.kills ?? 0) + killCount;
+      aq.progress = Math.min(100, ((aq.kills ?? 0) / (quest.target.killCount ?? 1)) * 100);
+    }
   }
 }
 

@@ -1,19 +1,40 @@
-import React from 'react';
-import { useAppSelector } from '../../store/hooks';
+import React, { useEffect } from 'react';
+import { useAppSelector, useAppDispatch } from '../../store/hooks';
 import { HexCoordinates, SocketEvent, StructureType, SystemType } from '@hexploration/shared';
 import { socketService } from '../../services/socketService';
+import { setActiveCombats } from '../../store/slices/gameSlice';
 import './HexInfo.css';
 
 interface HexInfoProps {
   selectedHex: HexCoordinates | null;
   onOpenPlanetarySystem?: (coordinates: HexCoordinates) => void;
   onOpenStation?: (stationId: string) => void;
+  onOpenQuestPanel?: () => void;
+  onOpenCargoPanel?: () => void;
 }
 
-export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySystem, onOpenStation }) => {
+export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySystem, onOpenStation, onOpenQuestPanel, onOpenCargoPanel }) => {
+  const dispatch = useAppDispatch();
   const players = useAppSelector((state) => state.player.players);
   const currentPlayer = useAppSelector((state) => state.player.currentPlayer);
   const map = useAppSelector((state) => state.game.map);
+  const invasions = useAppSelector((state) => state.game.invasions);
+  const activeCombats = useAppSelector((state) => state.game.activeCombats);
+
+  const hexKey = selectedHex ? `${selectedHex.q},${selectedHex.r}` : '';
+  const invasionInHex = hexKey ? invasions.find(inv => inv.neighborHexKeys.includes(hexKey) && (inv.enemyCountPerHex[hexKey] ?? 0) > 0) : null;
+  const enemyCountInHex = invasionInHex ? (invasionInHex.enemyCountPerHex[hexKey] ?? 0) : 0;
+  const combatsInHex = hexKey ? activeCombats.filter(c => c.hexKey === hexKey) : [];
+
+  useEffect(() => {
+    if (!selectedHex) return;
+    socketService.emit(SocketEvent.COMBAT_LIST_ACTIVE, { hexKey });
+    const handler = (data: { combats: typeof activeCombats }) => {
+      dispatch(setActiveCombats(data.combats || []));
+    };
+    socketService.on(SocketEvent.COMBAT_LIST_ACTIVE_DATA, handler);
+    return () => { socketService.off(SocketEvent.COMBAT_LIST_ACTIVE_DATA, handler); };
+  }, [selectedHex?.q, selectedHex?.r, hexKey, dispatch]);
 
   if (!selectedHex) {
     return (
@@ -29,7 +50,6 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
   }
 
   // Получить информацию о гексе
-  const hexKey = `${selectedHex.q},${selectedHex.r}`;
   // Проверяем если cells это Map или массив
   const hexCell = map?.cells
     ? Array.isArray(map.cells)
@@ -77,6 +97,19 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
     if (!selectedHex) return;
     console.log('📈 Развиваем колонию...');
     socketService.emit('develop:colony', { coordinates: selectedHex });
+  };
+
+  const handleInvasionCombat = () => {
+    socketService.emit('combat:start:invasion', { hexKey });
+  };
+
+  const handleJoinCombat = (combatId: string) => {
+    socketService.emit(SocketEvent.COMBAT_JOIN, { combatId });
+  };
+
+  const handleStartMining = () => {
+    if (!hexKey) return;
+    socketService.emit(SocketEvent.MINING_START, { hexKey });
   };
 
   return (
@@ -158,6 +191,30 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
           )}
         </div>
 
+        {/* Кнопки Квесты и Трюм — для любого выбранного гекса */}
+        {(onOpenQuestPanel || onOpenCargoPanel) && (
+          <div className="hex-section hex-buttons-row">
+            {onOpenQuestPanel && (
+              <button
+                type="button"
+                className="colonize-button hex-quest-btn"
+                onClick={onOpenQuestPanel}
+              >
+                📜 Квесты
+              </button>
+            )}
+            {onOpenCargoPanel && (
+              <button
+                type="button"
+                className="colonize-button hex-cargo-btn"
+                onClick={onOpenCargoPanel}
+              >
+                📦 Трюм
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Кнопка открыть планетарную систему — для любого планетарного гекса */}
         {(hexCell?.systemType === SystemType.PLANETARY || hexCell?.systemType === 'planetary') && (
           <div className="hex-section">
@@ -168,6 +225,15 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
             >
               🌌 Открыть систему
             </button>
+            {isCurrentPlayerHere && (
+              <button
+                type="button"
+                className="develop-button hex-mining-btn"
+                onClick={handleStartMining}
+              >
+                ⛏️ Майнинг
+              </button>
+            )}
           </div>
         )}
 
@@ -212,6 +278,34 @@ export const HexInfo: React.FC<HexInfoProps> = ({ selectedHex, onOpenPlanetarySy
           </div>
         )}
 
+
+        {/* Вторжение: бой с инвайдерами */}
+        {invasionInHex && enemyCountInHex > 0 && isCurrentPlayerHere && (
+          <div className="hex-section">
+            <div className="info-row">
+              <span className="info-label">Вторжение:</span>
+              <span className="info-value">Инвайдеров в гексе: {enemyCountInHex}</span>
+            </div>
+            <button className="bot-combat-button" onClick={handleInvasionCombat}>
+              ⚔️ Бой с инвайдерами ({enemyCountInHex})
+            </button>
+          </div>
+        )}
+
+        {/* Активные бои — можно присоединиться */}
+        {combatsInHex.length > 0 && isCurrentPlayerHere && (
+          <div className="hex-section">
+            <h4>Активные бои ({combatsInHex.length})</h4>
+            <ul className="active-combats-list">
+              {combatsInHex.map(c => (
+                <li key={c.combatId}>
+                  <span>{c.combatType === 'invasion' ? 'Вторжение' : c.combatType} — {c.participantsCount}/{c.maxParticipants ?? '?'} игроков</span>
+                  <button type="button" className="join-combat-btn" onClick={() => handleJoinCombat(c.combatId)}>Подключиться</button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         {isCurrentPlayerHere && (
           <div className="hex-actions">

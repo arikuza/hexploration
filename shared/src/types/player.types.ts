@@ -11,6 +11,7 @@ export interface Player {
   position: HexCoordinates;
   ship: Ship;
   resources: number;
+  credits: number;          // Кредиты (валюта)
   experience: number;
   level: number;
   online: boolean;
@@ -18,6 +19,8 @@ export interface Player {
   canMove: boolean;         // Может ли сейчас двигаться
   /** Навыки (Eve-like), опционально */
   skills?: PlayerSkills;
+  /** Активные квесты: [{ questId, progress, kills?, delivered? }] */
+  activeQuests?: Array<{ questId: string; progress: number; kills?: number; delivered?: number }>;
 }
 
 /**

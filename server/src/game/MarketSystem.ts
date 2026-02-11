@@ -135,12 +135,12 @@ export class MarketSystem {
       }
 
       // Выдать кредиты продавцу
-      player.resources += totalCost;
+      player.credits += totalCost;
     } else {
       // Игрок покупает у ордера на продажу
       // Проверить кредиты у игрока
-      if (player.resources < totalCost) {
-        return { success: false, error: `Недостаточно кредитов. Требуется: ${totalCost}, есть: ${player.resources}` };
+      if (player.credits < totalCost) {
+        return { success: false, error: `Недостаточно кредитов. Требуется: ${totalCost}, есть: ${player.credits}` };
       }
 
       // Передать предметы покупателю
@@ -152,7 +152,7 @@ export class MarketSystem {
       }
 
       // Списать кредиты у покупателя
-      player.resources -= totalCost;
+      player.credits -= totalCost;
     }
 
     // Обновить ордер

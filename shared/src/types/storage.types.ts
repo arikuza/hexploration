@@ -17,6 +17,7 @@ export interface StationStorage {
   items: ItemStack[];              // Предметы на станции (неограниченно)
   ships: Ship[];                   // Корабли в ангаре
   maxShipSlots: number;            // Максимальное количество слотов для кораблей
+  walletCredits?: number;          // Кредиты станции (для наград квестов)
 }
 
 /**

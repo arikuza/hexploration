@@ -1,5 +1,5 @@
 import { createSlice, PayloadAction } from '@reduxjs/toolkit';
-import { Player, PlayerSkills } from '@hexploration/shared';
+import { Player, PlayerSkills, CargoHold } from '@hexploration/shared';
 
 interface PlayerState {
   currentPlayer: Player | null;
@@ -29,6 +29,16 @@ const playerSlice = createSlice({
     },
     removePlayer: (state, action: PayloadAction<string>) => {
       state.players = state.players.filter(p => p.id !== action.payload);
+    },
+    updatePlayerCredits: (state, action: PayloadAction<number>) => {
+      if (state.currentPlayer) {
+        state.currentPlayer.credits = action.payload;
+      }
+    },
+    updatePlayerActiveQuests: (state, action: PayloadAction<Array<{ questId: string; progress: number; kills?: number; delivered?: number }>>) => {
+      if (state.currentPlayer) {
+        state.currentPlayer.activeQuests = action.payload;
+      }
     },
     updatePlayerPosition: (state, action: PayloadAction<{ 
       playerId: string; 
@@ -82,6 +92,11 @@ const playerSlice = createSlice({
         state.currentPlayer.skills = action.payload ?? undefined;
       }
     },
+    updatePlayerCargoHold: (state, action: PayloadAction<CargoHold>) => {
+      if (state.currentPlayer?.ship) {
+        state.currentPlayer.ship.cargoHold = action.payload;
+      }
+    },
   },
 });
 
@@ -90,8 +105,11 @@ export const {
   setPlayers,
   addPlayer,
   removePlayer,
+  updatePlayerCredits,
+  updatePlayerActiveQuests,
   updatePlayerPosition,
   updatePlayerTimers,
   setCurrentPlayerSkills,
+  updatePlayerCargoHold,
 } = playerSlice.actions;
 export default playerSlice.reducer;

@@ -322,9 +322,9 @@ export class HexMapManager {
 
   /**
    * Пересчитать влияние от всех источников (NPC станции + все колонии игроков).
-   * Надежный метод: пересчитывает всё заново, гарантируя корректный максимум.
+   * Вызывать после удаления колонии (например, при захвате).
    */
-  private recalculateAllInfluences(): void {
+  recalculateAllInfluences(): void {
     // Координаты NPC станций (как при генерации карты)
     const npcStations: Array<{ coords: HexCoordinates; threat: number }> = [
       { coords: { q: 0, r: 0 }, threat: 1.0 },
@@ -378,10 +378,10 @@ export class HexMapManager {
   }
 
   /**
-   * Деградация колоний: раз в 5 минут −0.1 к threat при наличии красных зон рядом (мин. 0.1)
-   * @returns true если произошла деградация (нужно сохранить изменения)
+   * Деградация колоний: раз в 5 минут −0.1 к threat при наличии красных зон рядом (мин. 0)
+   * @returns { decayed, invasionSources } - деградация и список гексов, где УУ упал до 0 (триггер вторжения)
    */
-  checkColonyDecay(): boolean {
+  checkColonyDecay(): { decayed: boolean; invasionSources: HexCoordinates[] } {
     const now = Date.now();
     const decayInterval = 5 * 60 * 1000; // 5 минут
     let coloniesChecked = 0;
@@ -394,6 +394,8 @@ export class HexMapManager {
     // #region agent log
     console.log(`🔍 [DECAY] Начало проверки деградации колоний (всего гексов: ${this.map.cells.size})`);
     // #endregion
+
+    const invasionSources: HexCoordinates[] = [];
 
     this.map.cells.forEach((cell) => {
       totalCells++;
@@ -443,8 +445,11 @@ export class HexMapManager {
 
       if (hasNearbyDanger) {
         const oldThreat = cell.threat;
-        cell.threat = Math.max(0.1, cell.threat - 0.1);
+        cell.threat = Math.max(0, cell.threat - 0.1);
         coloniesDecayed++;
+        if (cell.threat === 0) {
+          invasionSources.push(cell.coordinates);
+        }
         console.log(`📉 Деградация колонии [${cell.coordinates.q}, ${cell.coordinates.r}]: threat ${oldThreat.toFixed(2)} → ${cell.threat.toFixed(2)}`);
         // #region agent log
         fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'HexMap.ts:416',message:'Colony decayed',data:{q:cell.coordinates.q,r:cell.coordinates.r,oldThreat,newThreat:cell.threat,owner:cell.owner},timestamp:Date.now(),runId:'decay-check',hypothesisId:'C'})}).catch(()=>{});
@@ -468,8 +473,19 @@ export class HexMapManager {
       console.log(`ℹ️ [DECAY] Пользовательских колоний не найдено для проверки деградации`);
     }
     
-    // Возвращаем true если произошла деградация (нужно сохранить изменения)
-    return coloniesDecayed > 0;
+    // Возвращаем результат: деградация и список источников вторжения
+    return { decayed: coloniesDecayed > 0, invasionSources };
+  }
+
+  /**
+   * Поднять УУ системы после очистки вторжения
+   */
+  raiseThreatAfterInvasionCleared(coordinates: HexCoordinates, amount: number = 0.2): void {
+    const cell = this.getCell(coordinates);
+    if (cell && cell.hasStation && cell.owner) {
+      cell.threat = Math.min(1.0, cell.threat + amount);
+      this.recalculateAllInfluences();
+    }
   }
 
   /**

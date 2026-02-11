@@ -7,10 +7,12 @@ export interface IPlayerData extends Document {
   position: HexCoordinates;
   ship: Ship;
   resources: number;
+  credits: number;          // Кредиты (валюта)
   experience: number;
   level: number;
   lastPlayed: Date;
   skills?: PlayerSkills;
+  activeQuests?: Array<{ questId: string; progress: number; kills?: number; delivered?: number }>;
 }
 
 const PlayerDataSchema = new Schema<IPlayerData>({
@@ -35,6 +37,10 @@ const PlayerDataSchema = new Schema<IPlayerData>({
     type: Number,
     default: 100,
   },
+  credits: {
+    type: Number,
+    default: 1000,
+  },
   experience: {
     type: Number,
     default: 0,
@@ -49,6 +55,10 @@ const PlayerDataSchema = new Schema<IPlayerData>({
   },
   skills: {
     type: Schema.Types.Mixed,
+    required: false,
+  },
+  activeQuests: {
+    type: [Schema.Types.Mixed],
     required: false,
   },
 });

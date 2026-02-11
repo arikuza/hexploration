@@ -1,0 +1,100 @@
+.cargo-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  background: #16213e;
+  border-radius: 4px;
+  padding: 16px;
+}
+
+.cargo-panel h3 {
+  margin: 0;
+  color: #4a9eff;
+  font-size: 16px;
+}
+
+.cargo-capacity {
+  margin-bottom: 8px;
+}
+
+.capacity-bar {
+  width: 100%;
+  height: 20px;
+  background: #0f3460;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 8px;
+}
+
+.capacity-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4a9eff, #00d4ff);
+  transition: width 0.3s;
+}
+
+.capacity-text {
+  font-size: 12px;
+  color: #888;
+}
+
+.item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cargo-panel .item-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  background: #1a1a2e;
+  border-radius: 4px;
+  border: 1px solid #0f3460;
+}
+
+.item-info {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex: 1;
+}
+
+.item-name {
+  font-weight: 500;
+  color: #eee;
+  min-width: 150px;
+}
+
+.item-quantity {
+  color: #888;
+  font-size: 14px;
+}
+
+.item-volume {
+  color: #4a9eff;
+  font-size: 12px;
+}
+
+.cargo-discard-btn {
+  padding: 6px 12px;
+  background: rgba(255, 100, 100, 0.3);
+  border: 1px solid rgba(255, 100, 100, 0.5);
+  border-radius: 4px;
+  color: #ff9999;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.cargo-discard-btn:hover {
+  background: rgba(255, 100, 100, 0.5);
+  border-color: #ff6666;
+}
+
+.empty-message {
+  padding: 32px;
+  text-align: center;
+  color: #888;
+  font-style: italic;
+}

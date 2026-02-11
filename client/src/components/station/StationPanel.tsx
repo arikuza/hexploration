@@ -8,9 +8,11 @@ import StorageView from './StorageView';
 import CraftingView from './CraftingView';
 import MarketView from './MarketView';
 import HangarView from './HangarView';
+import { QuestView } from './QuestView';
+import { StationWallet } from './StationWallet';
 import './StationPanel.css';
 
-type TabType = 'storage' | 'crafting' | 'market' | 'hangar';
+type TabType = 'storage' | 'crafting' | 'market' | 'hangar' | 'quests';
 
 interface StationPanelProps {
   stationId: string;
@@ -76,6 +78,8 @@ const StationPanel: React.FC<StationPanelProps> = ({ stationId, onClose }) => {
         <button onClick={onClose}>✕</button>
       </div>
 
+      <StationWallet stationId={stationId} />
+
       <div className="station-panel-tabs">
         <button
           className={activeTab === 'storage' ? 'active' : ''}
@@ -101,6 +105,12 @@ const StationPanel: React.FC<StationPanelProps> = ({ stationId, onClose }) => {
         >
           Ангар
         </button>
+        <button
+          className={activeTab === 'quests' ? 'active' : ''}
+          onClick={() => setActiveTab('quests')}
+        >
+          Квесты
+        </button>
       </div>
 
       <div className="station-panel-content">
@@ -112,6 +122,7 @@ const StationPanel: React.FC<StationPanelProps> = ({ stationId, onClose }) => {
         )}
         {activeTab === 'market' && <MarketView stationId={stationId} />}
         {activeTab === 'hangar' && <HangarView stationId={stationId} storage={storage} />}
+        {activeTab === 'quests' && <QuestView stationId={stationId} />}
       </div>
     </div>
   );

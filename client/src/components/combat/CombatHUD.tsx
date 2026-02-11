@@ -56,8 +56,14 @@ interface ShipStatusProps {
 }
 
 const ShipStatus: React.FC<ShipStatusProps> = ({ ship, isEnemy = false }) => {
-  const healthPercent = (ship.health / SHIP_MAX_HEALTH) * 100;
-  const energyPercent = (ship.energy / SHIP_MAX_ENERGY) * 100;
+  const displayHealth = Math.max(0, ship.health);
+  const maxH = (ship as { maxHealth?: number }).maxHealth ?? SHIP_MAX_HEALTH;
+  const maxE = (ship as { maxEnergy?: number }).maxEnergy ?? SHIP_MAX_ENERGY;
+  const healthPercent = Math.max(0, Math.min(100, (displayHealth / maxH) * 100));
+  const energyPercent = (ship.energy / maxE) * 100;
+  // #region agent log
+  fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CombatHUD.tsx:ShipStatus',message:'CombatHUD display',data:{shipHealth:ship.health,shipMaxHealth:maxH,shipEnergy:ship.energy,shipMaxEnergy:maxE},timestamp:Date.now(),hypothesisId:'H-B',runId:'post-fix'})}).catch(()=>{});
+  // #endregion
 
   return (
     <div className="ship-status">
@@ -65,7 +71,7 @@ const ShipStatus: React.FC<ShipStatusProps> = ({ ship, isEnemy = false }) => {
       <div className="status-bar">
         <div className="status-label">
           <span>HP</span>
-          <span>{Math.ceil(ship.health)}/{SHIP_MAX_HEALTH}</span>
+          <span>{Math.ceil(displayHealth)}/{maxH}</span>
         </div>
         <div className="status-progress">
           <div
@@ -80,7 +86,7 @@ const ShipStatus: React.FC<ShipStatusProps> = ({ ship, isEnemy = false }) => {
         <div className="status-bar">
           <div className="status-label">
             <span>Энергия</span>
-            <span>{Math.ceil(ship.energy)}/{SHIP_MAX_ENERGY}</span>
+            <span>{Math.ceil(ship.energy)}/{maxE}</span>
           </div>
           <div className="status-progress">
             <div

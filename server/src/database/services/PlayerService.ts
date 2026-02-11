@@ -34,9 +34,11 @@ export class PlayerService {
         position,
         ship: doc.ship,
         resources: doc.resources ?? 100,
+        credits: doc.credits ?? 1000,
         experience: doc.experience ?? 0,
         level: doc.level ?? 1,
         skills,
+        activeQuests: doc.activeQuests ?? [],
       };
     } catch (error) {
       console.error('Ошибка загрузки игрока:', error);
@@ -61,12 +63,16 @@ export class PlayerService {
         position,
         ship: player.ship,
         resources: player.resources ?? 100,
+        credits: player.credits ?? 1000,
         experience: player.experience ?? 0,
         level: player.level ?? 1,
         lastPlayed: new Date(),
       };
       if (player.skills) {
         update.skills = JSON.parse(JSON.stringify(player.skills));
+      }
+      if (player.activeQuests) {
+        update.activeQuests = JSON.parse(JSON.stringify(player.activeQuests));
       }
 
       console.log(`[SAVE] Сохранение userId=${player.id}, username=${player.username}, позиция=`, position);

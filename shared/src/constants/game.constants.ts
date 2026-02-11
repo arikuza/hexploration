@@ -102,3 +102,16 @@ export const WEAPON_STATS = {
 // Ресурсы
 export const RESOURCE_SPAWN_RATE = 0.3; // 30% шанс спавна ресурсов в секторе
 export const BASE_RESOURCE_AMOUNT = 100;
+
+// Майнинг (Asteroids-стиль)
+export const MINING_ARENA_WIDTH = 800;
+export const MINING_ARENA_HEIGHT = 600;
+export const MINING_SHIP_SPEED = 80;
+export const MINING_SHIP_TURN = 2.5;       // Плавнее поворот (было 5)
+export const MINING_LASER_ENERGY = 3;     // Расход за выстрел (энергия должна тратиться)
+export const MINING_LASER_RANGE = 150;
+export const MINING_ENERGY_REGEN = 8;    // Реген — меньше расхода при активной стрельбе
+export const MINING_STRAFE_SPEED = 40;    // Стрейф Q/E
+export const MINING_ASTEROID_COUNT = 10;
+export const MINING_ASTEROID_SPEED = 0.5;   // Пикселей за тик (20 тиков/сек) — медленное движение
+export const MINING_ITEM_TYPES = ['iron_ore', 'copper_ore', 'energy_crystal', 'rare_metal'] as const;

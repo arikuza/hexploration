@@ -29,7 +29,12 @@ export function recalcPlayerSkills(skills: PlayerSkills, now: number): PlayerSki
 
   while (result.currentTraining) {
     const training = result.currentTraining;
-    const { skillId, targetLevel, startTime } = training;
+    let { skillId, targetLevel, startTime } = training;
+    // Исправить startTime в будущем (баг/коррупция данных) — сбросить на now
+    if (startTime > now) {
+      startTime = now;
+      training.startTime = now;
+    }
     const skill = SKILLS_BY_ID[skillId];
     if (!skill) {
       result.currentTraining = result.queue.shift() ?? null;
@@ -136,11 +141,13 @@ export function setSkillQueue(
 
   if (newQueue.length > 0) {
     // Если первый элемент уже обучался, используем его startTime, иначе now
+    // Не сохраняем startTime в будущем (защита от коррупции)
     const firstItem = newQueue[0];
+    const startTime = firstItem.startTime > 0 && firstItem.startTime <= now ? firstItem.startTime : now;
     updated.currentTraining = {
       skillId: firstItem.skillId,
       targetLevel: firstItem.targetLevel,
-      startTime: firstItem.startTime > 0 ? firstItem.startTime : now,
+      startTime,
     };
   }
 

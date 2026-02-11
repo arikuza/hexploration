@@ -2,6 +2,7 @@ import { configureStore } from '@reduxjs/toolkit';
 import gameReducer from './slices/gameSlice';
 import playerReducer from './slices/playerSlice';
 import combatReducer from './slices/combatSlice';
+import miningReducer from './slices/miningSlice';
 import authReducer from './slices/authSlice';
 import stationReducer from './slices/stationSlice';
 import { socketMiddleware } from './middleware/socketMiddleware';
@@ -12,6 +13,7 @@ export const store = configureStore({
     game: gameReducer,
     player: playerReducer,
     combat: combatReducer,
+    mining: miningReducer,
     station: stationReducer,
   },
   middleware: (getDefaultMiddleware) =>

@@ -32,6 +32,16 @@ export interface CombatState {
   arena: CombatArena;
   startTime: number;
   duration: number;
+  /** Гекс, в котором идёт бой (для invasion, mining) */
+  hexKey?: string;
+  /** Тип боя: pvp, bot, invasion, mining */
+  combatType?: string;
+  /** ID вторжения (если тип invasion) */
+  invasionId?: string;
+  /** Можно ли присоединиться к бою */
+  joinable?: boolean;
+  /** Максимум участников (для invasion) */
+  maxParticipants?: number;
 }
 
 /**
@@ -46,6 +56,12 @@ export interface CombatShip {
   health: number;
   energy: number;
   weaponCooldowns: Map<string, number>;
+  /** Персональные характеристики (от participant.ship с учётом навыков) */
+  maxSpeed?: number;
+  turnRate?: number;
+  maxHealth?: number;
+  maxEnergy?: number;
+  acceleration?: number;
 }
 
 /**
@@ -115,6 +131,11 @@ export enum SocketEvent {
   COMBAT_UPDATE = 'combat:update',
   COMBAT_END = 'combat:end',
   COMBAT_ACTION = 'combat:action',
+  COMBAT_LIST_ACTIVE = 'combat:list_active',
+  COMBAT_LIST_ACTIVE_DATA = 'combat:list_active:data',
+  COMBAT_JOIN = 'combat:join',
+  COMBAT_JOIN_SUCCESS = 'combat:join:success',
+  COMBAT_JOIN_ERROR = 'combat:join:error',
   
   // Игроки
   PLAYER_JOIN = 'player:join',
@@ -165,6 +186,10 @@ export enum SocketEvent {
   STATION_SHIP_RETRIEVE = 'station:ship:retrieve',
   STATION_SHIP_RETRIEVE_SUCCESS = 'station:ship:retrieve:success',
   STATION_SHIP_RETRIEVE_ERROR = 'station:ship:retrieve:error',
+  STATION_WALLET_DEPOSIT = 'station:wallet:deposit',
+  STATION_WALLET_WITHDRAW = 'station:wallet:withdraw',
+  STATION_WALLET_SUCCESS = 'station:wallet:success',
+  STATION_WALLET_ERROR = 'station:wallet:error',
   
   // Крафт
   STATION_CRAFT_RECIPES_GET = 'station:craft:recipes:get',
@@ -188,4 +213,30 @@ export enum SocketEvent {
   STATION_MARKET_ORDER_EXECUTE = 'station:market:order:execute',
   STATION_MARKET_ORDER_EXECUTE_SUCCESS = 'station:market:order:execute:success',
   STATION_MARKET_ORDER_EXECUTE_ERROR = 'station:market:order:execute:error',
+
+  // Квесты
+  QUEST_CREATE = 'quest:create',
+  QUEST_CREATE_SUCCESS = 'quest:create:success',
+  QUEST_CREATE_ERROR = 'quest:create:error',
+  QUEST_LIST_GET = 'quest:list:get',
+  QUEST_LIST_DATA = 'quest:list:data',
+  QUEST_TAKE = 'quest:take',
+  QUEST_TAKE_SUCCESS = 'quest:take:success',
+  QUEST_TAKE_ERROR = 'quest:take:error',
+  QUEST_TURN_IN = 'quest:turn_in',
+  QUEST_TURN_IN_SUCCESS = 'quest:turn_in:success',
+  QUEST_TURN_IN_ERROR = 'quest:turn_in:error',
+
+  // Трюм (выброс без станции)
+  CARGO_DISCARD = 'cargo:discard',
+  CARGO_DISCARD_SUCCESS = 'cargo:discard:success',
+  CARGO_DISCARD_ERROR = 'cargo:discard:error',
+
+  // Майнинг
+  MINING_START = 'mining:start',
+  MINING_STARTED = 'mining:started',
+  MINING_UPDATE = 'mining:update',
+  MINING_EXIT = 'mining:exit',
+  MINING_COMPLETE = 'mining:complete',
+  MINING_ERROR = 'mining:error',
 }

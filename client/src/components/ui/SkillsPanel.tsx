@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppSelector } from '../../store/hooks';
 import {
   SkillCategory,
@@ -9,6 +10,74 @@ import {
 } from '@hexploration/shared';
 import { socketService } from '../../services/socketService';
 import './SkillsPanel.css';
+
+function SkillTooltip({ text, children }: { text: string; children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const [pos, setPos] = useState({ x: 0, y: 0 });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const updatePos = () => {
+    const el = triggerRef.current;
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      setPos({ x: rect.left - 8, y: rect.top + rect.height / 2 });
+    }
+  };
+
+  const show = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+    setVisible(true);
+    updatePos();
+  };
+
+  const hide = () => {
+    hideTimeoutRef.current = setTimeout(() => setVisible(false), 100);
+  };
+
+  const cancelHide = () => {
+    if (hideTimeoutRef.current) {
+      clearTimeout(hideTimeoutRef.current);
+      hideTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => () => {
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+  }, []);
+
+  return (
+    <div
+      ref={triggerRef}
+      className="skill-tooltip-trigger"
+      onMouseEnter={show}
+      onMouseLeave={hide}
+    >
+      {children}
+      {visible &&
+        createPortal(
+          <div
+            className="skill-tooltip skill-tooltip-portal"
+            style={{
+              left: pos.x,
+              top: pos.y,
+              transform: 'translate(-100%, -50%)',
+            }}
+            onMouseEnter={cancelHide}
+            onMouseLeave={hide}
+          >
+            {text.split('\n').map((line, i) => (
+              <div key={i}>{line || '\u00A0'}</div>
+            ))}
+          </div>,
+          document.body
+        )}
+    </div>
+  );
+}
 
 const CATEGORY_LABELS: Record<SkillCategory, string> = {
   [SkillCategory.COMBAT]: 'Боевая',
@@ -74,10 +143,6 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
     const skill = SKILLS_BY_ID[currentTraining.skillId];
     const currentLevel = levels[currentTraining.skillId] ?? 0;
     
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:73',message:'Training data received',data:{currentTraining,skillExists:!!skill,currentLevel,levels},timestamp:Date.now(),runId:'debug3',hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
-    
     if (skill) {
       required = getSpRequiredForLevels(skill, currentLevel, currentTraining.targetLevel);
       const now = Date.now();
@@ -93,17 +158,10 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
         const waitSeconds = Math.ceil(-elapsedMs / 1000);
         remainingSeconds = waitSeconds + (required * 3600 / skill.spPerHour);
         
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:87',message:'StartTime in future',data:{skillId:currentTraining.skillId,currentLevel,targetLevel:currentTraining.targetLevel,startTime:currentTraining.startTime,now,elapsedMs,waitSeconds,required,spPerHour:skill.spPerHour},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
       } else {
         // Нормальный случай: startTime в прошлом
         const progressRaw = (elapsedMs / 3600000) * skill.spPerHour;
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:95',message:'Normal progress calculation',data:{skillId:currentTraining.skillId,currentLevel,targetLevel:currentTraining.targetLevel,startTime:currentTraining.startTime,now,elapsedMs,progressRaw,required,spPerHour:skill.spPerHour},timestamp:Date.now(),runId:'post-fix',hypothesisId:'A'})}).catch(()=>{});
-        // #endregion
-        
+
         // Ограничиваем прогресс от 0 до required
         progress = Math.max(0, Math.min(progressRaw, required));
         
@@ -118,15 +176,7 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
         remainingSeconds = skill.spPerHour > 0 
           ? Math.ceil((remainingSp * 3600) / skill.spPerHour)
           : 0;
-        
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:110',message:'After clamping',data:{progressRaw,progress,progressPercent,remainingSp,remainingSeconds,required},timestamp:Date.now(),runId:'post-fix',hypothesisId:'B'})}).catch(()=>{});
-        // #endregion
       }
-    } else {
-      // #region agent log
-      fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'SkillsPanel.tsx:103',message:'Skill not found',data:{skillId:currentTraining.skillId},timestamp:Date.now(),runId:'debug3',hypothesisId:'D'})}).catch(()=>{});
-      // #endregion
     }
   }
 
@@ -200,9 +250,14 @@ export function SkillsPanel({ onClose }: SkillsPanelProps) {
           {categorySkills.map((skill) => {
             const current = levels[skill.id] ?? 0;
             const isTraining = currentTraining?.skillId === skill.id;
+            const tooltipText = skill.levelBonuses
+              ? `${skill.description}\n\nБонусы по уровням:\n${skill.levelBonuses}`
+              : skill.description;
             return (
               <li key={skill.id} className={`skills-panel__skill ${isTraining ? 'training' : ''}`}>
-                <div className="skills-panel__skill-name">{skill.name}</div>
+                <SkillTooltip text={tooltipText}>
+                  <div className="skills-panel__skill-name">{skill.name}</div>
+                </SkillTooltip>
                 <div className="skills-panel__skill-levels">
                   {[1, 2, 3, 4, 5].map((lvl) => (
                     <span

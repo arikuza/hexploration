@@ -8,6 +8,9 @@ export * from './types/item.types.js';
 export * from './types/storage.types.js';
 export * from './types/crafting.types.js';
 export * from './types/market.types.js';
+export * from './types/invasion.types.js';
+export * from './types/quest.types.js';
+export * from './types/mining.types.js';
 
 // Constants
 export * from './constants/game.constants.js';

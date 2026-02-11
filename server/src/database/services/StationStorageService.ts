@@ -51,6 +51,7 @@ export class StationStorageService {
       items: [],
       ships: [],
       maxShipSlots: 10,
+      walletCredits: 0,
     };
 
     await this.saveStorage(storage);
@@ -66,5 +67,18 @@ export class StationStorageService {
       storage = await this.createStorage(stationId);
     }
     return storage;
+  }
+
+  /**
+   * Удалить хранилище станции (при уничтожении станции)
+   */
+  static async deleteStorage(stationId: string): Promise<boolean> {
+    try {
+      const result = await StationStorageModel.deleteOne({ stationId });
+      return (result.deletedCount ?? 0) > 0;
+    } catch (error) {
+      console.error('Ошибка удаления хранилища станции:', error);
+      return false;
+    }
   }
 }

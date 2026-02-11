@@ -1,0 +1,43 @@
+.station-wallet {
+  padding: 0.5rem 1rem;
+  margin-bottom: 0.5rem;
+  border: 1px solid #444;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.station-wallet h4 {
+  margin: 0 0 0.5rem 0;
+}
+
+.wallet-balance {
+  margin-bottom: 0.5rem;
+}
+
+.wallet-balance strong {
+  color: #8c8;
+}
+
+.wallet-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.wallet-action {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.wallet-action input {
+  width: 80px;
+  padding: 0.25rem;
+}
+
+.wallet-error {
+  color: #c66;
+  font-size: 0.9em;
+  margin-top: 0.25rem;
+}

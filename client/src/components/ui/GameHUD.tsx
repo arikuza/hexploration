@@ -66,8 +66,8 @@ function GameHUD() {
               </span>
             </div>
             <div className="stat">
-              <span className="stat-label">Ресурсы:</span>
-              <span className="stat-value">{currentPlayer.resources}</span>
+              <span className="stat-label">Кредиты:</span>
+              <span className="stat-value">{currentPlayer.credits ?? 1000}</span>
             </div>
           </div>
         )}

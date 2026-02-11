@@ -1,18 +1,23 @@
 import { Middleware } from '@reduxjs/toolkit';
 import { socketService } from '../../services/socketService';
-import { setGameState, updateMap, setConnected } from '../slices/gameSlice';
+import { setGameState, updateMap, setInvasions, setConnected } from '../slices/gameSlice';
 import {
   setCurrentPlayer,
   setPlayers,
   addPlayer,
   removePlayer,
+  updatePlayerCredits,
+  updatePlayerActiveQuests,
   updatePlayerPosition,
   updatePlayerTimers,
   setCurrentPlayerSkills,
+  updatePlayerCargoHold,
 } from '../slices/playerSlice';
 import { startCombat, updateCombat, setCombatResult } from '../slices/combatSlice';
+import { startMining, updateMining, setMiningComplete } from '../slices/miningSlice';
 import {
   setCurrentStation,
+  clearStation,
   setStorage,
   setCargoHold,
   setRecipes,
@@ -20,6 +25,7 @@ import {
   addCraftingJob,
   removeCraftingJob,
   updateCraftingProgress,
+  setQuests,
   setMarketOrders,
   addMarketOrder,
   updateMarketOrder,
@@ -87,10 +93,20 @@ export const setupSocketListeners = (store: any) => {
         store.dispatch(updatePlayerTimers(data.timers));
       }
       
-      // Обновление карты при колонизации, развитии или деградации
-      if ((data.type === 'colony_created' || data.type === 'colony_developed' || data.type === 'colony_decayed') && data.map) {
+      // Обновление карты при колонизации, развитии, деградации или вторжении
+      if ((data.type === 'colony_created' || data.type === 'colony_developed' || data.type === 'colony_decayed' || data.type === 'invasion_started' || data.type === 'invasion_cleared' || data.type === 'invasion_hex_cleared' || data.type === 'invasion_captured') && data.map) {
         console.log(`🏛️ Обновление карты: ${data.type}`, data);
         store.dispatch(updateMap(data.map));
+        if (data.invasions) store.dispatch(setInvasions(data.invasions));
+        // Если захвачена станция, на которой игрок сейчас — закрыть панель
+        if (data.type === 'invasion_captured' && data.capturedHexKeys?.length) {
+          const state = store.getState();
+          const station = state?.station?.currentStation;
+          const targetId = station?.location?.targetId;
+          if (targetId && data.capturedHexKeys.some((hk: string) => targetId === `star-${hk}`)) {
+            store.dispatch(clearStation());
+          }
+        }
       }
     });
 
@@ -148,10 +164,36 @@ export const setupSocketListeners = (store: any) => {
     });
 
     // Обработчик окончания боя с ботом
+    socket.on(SocketEvent.COMBAT_JOIN_SUCCESS, (data: any) => {
+      store.dispatch(startCombat(data.combat));
+    });
+
+    socket.on(SocketEvent.COMBAT_JOIN_ERROR, (data: any) => {
+      console.error('Ошибка подключения к бою:', data.message);
+    });
+
     socket.on('combat:ended', (data: any) => {
       console.log('🤖 Бой завершен, победитель:', data.winner);
-      // Сохраняем результат вместо немедленного закрытия
       store.dispatch(setCombatResult({ winner: data.winner, combat: data.combat }));
+      if (data.activeQuests) store.dispatch(updatePlayerActiveQuests(data.activeQuests));
+    });
+
+    socket.on(SocketEvent.MINING_STARTED, (data: { state: any }) => {
+      store.dispatch(startMining(data.state));
+    });
+
+    socket.on(SocketEvent.MINING_UPDATE, (data: { state: any }) => {
+      store.dispatch(updateMining(data.state));
+    });
+
+    socket.on(SocketEvent.MINING_COMPLETE, (data: { collected: any; cargoHold: any }) => {
+      store.dispatch(setMiningComplete({ collected: data.collected }));
+      if (data.cargoHold) store.dispatch(updatePlayerCargoHold(data.cargoHold));
+    });
+
+    socket.on(SocketEvent.MINING_ERROR, (data: { message: string }) => {
+      console.error('Ошибка майнинга:', data.message);
+      alert(data.message);
     });
 
     socket.on(SocketEvent.SKILLS_DATA, (data: { skills: any }) => {
@@ -171,9 +213,11 @@ export const setupSocketListeners = (store: any) => {
         store.dispatch(setCurrentStation(data.station));
         store.dispatch(setStorage(data.station?.storage));
         store.dispatch(setCargoHold(data.cargoHold));
-        // Установить активные задачи крафта для этой станции
         if (data.craftingJobs) {
           store.dispatch(setCraftingJobs(data.craftingJobs));
+        }
+        if (data.quests) {
+          store.dispatch(setQuests(data.quests));
         }
       }
     });
@@ -190,6 +234,14 @@ export const setupSocketListeners = (store: any) => {
     socket.on(SocketEvent.STATION_CARGO_TRANSFER_SUCCESS, (data: any) => {
       store.dispatch(setStorage(data.storage));
       store.dispatch(setCargoHold(data.cargoHold));
+    });
+
+    socket.on(SocketEvent.CARGO_DISCARD_SUCCESS, (data: { cargoHold: any }) => {
+      if (data.cargoHold) store.dispatch(updatePlayerCargoHold(data.cargoHold));
+    });
+
+    socket.on(SocketEvent.CARGO_DISCARD_ERROR, (data: { message?: string }) => {
+      if (data.message) alert(data.message);
     });
 
     socket.on(SocketEvent.STATION_CARGO_TRANSFER_ERROR, (data: any) => {
@@ -280,6 +332,45 @@ export const setupSocketListeners = (store: any) => {
 
     socket.on(SocketEvent.STATION_MARKET_ORDER_EXECUTE_SUCCESS, (data: any) => {
       store.dispatch(updateMarketOrder(data.order));
+      if (data.playerCredits !== undefined) {
+        store.dispatch(updatePlayerCredits(data.playerCredits));
+      }
+    });
+
+    socket.on(SocketEvent.QUEST_LIST_DATA, (data: { quests: any[] }) => {
+      if (data.quests) store.dispatch(setQuests(data.quests));
+    });
+
+    socket.on(SocketEvent.STATION_WALLET_SUCCESS, (data: any) => {
+      if (data.storage) store.dispatch(setStorage(data.storage));
+      if (data.playerCredits !== undefined) store.dispatch(updatePlayerCredits(data.playerCredits));
+    });
+
+    socket.on(SocketEvent.QUEST_CREATE_SUCCESS, (data: any) => {
+      if (data.quests) store.dispatch(setQuests(data.quests));
+      if (data.storage) store.dispatch(setStorage(data.storage));
+    });
+
+    socket.on(SocketEvent.QUEST_TAKE_SUCCESS, (data: any) => {
+      if (data.activeQuests) store.dispatch(updatePlayerActiveQuests(data.activeQuests));
+    });
+
+    socket.on(SocketEvent.QUEST_TURN_IN_SUCCESS, (data: any) => {
+      if (data.playerCredits !== undefined) store.dispatch(updatePlayerCredits(data.playerCredits));
+      if (data.activeQuests) store.dispatch(updatePlayerActiveQuests(data.activeQuests));
+      if (data.storage) store.dispatch(setStorage(data.storage));
+    });
+
+    socket.on(SocketEvent.SYSTEM_COLLECT_SUCCESS, (data: any) => {
+      if (data.playerCredits !== undefined) {
+        store.dispatch(updatePlayerCredits(data.playerCredits));
+      }
+    });
+
+    socket.on(SocketEvent.SYSTEM_BUILD_SUCCESS, (data: any) => {
+      if (data.playerCredits !== undefined) {
+        store.dispatch(updatePlayerCredits(data.playerCredits));
+      }
     });
 
     socket.on(SocketEvent.STATION_MARKET_ORDER_EXECUTE_ERROR, (data: any) => {

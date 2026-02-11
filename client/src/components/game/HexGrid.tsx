@@ -16,7 +16,7 @@ function HexGrid({ selectedHex, onHexSelect }: HexGridProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [zoomLevel, setZoomLevel] = useState<number>(0); // 0 = 1x, 1 = 0.5x, 2 = 0.125x
-  const { map } = useAppSelector((state) => state.game);
+  const { map, invasions } = useAppSelector((state) => state.game);
   const { currentPlayer } = useAppSelector((state) => state.player);
 
   // Получить текущий коэффициент зума
@@ -124,7 +124,7 @@ function HexGrid({ selectedHex, onHexSelect }: HexGridProps) {
       }
       
       renderedCount++;
-      drawHex(ctx, cell, useLowDetail);
+      drawHex(ctx, cell, useLowDetail, invasions);
     });
 
     // Отрисовать текущего игрока (только свой корабль на карте)
@@ -146,7 +146,7 @@ function HexGrid({ selectedHex, onHexSelect }: HexGridProps) {
     }
 
     ctx.restore();
-  }, [map, hoveredHex, currentPlayer, selectedHex, camera, zoomLevel]);
+  }, [map, invasions, hoveredHex, currentPlayer, selectedHex, camera, zoomLevel]);
 
   // Обработка начала перетаскивания
   const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -305,12 +305,35 @@ function getThreatColor(threat: number): string {
 }
 
 /**
+ * Отрисовать иконку инвайдеров (меч/череп)
+ */
+function drawInvasionIcon(ctx: CanvasRenderingContext2D, x: number, y: number) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.fillStyle = '#ff4444';
+  ctx.strokeStyle = '#ff8888';
+  ctx.lineWidth = 1;
+  // Простой череп (круг + два глаза)
+  ctx.beginPath();
+  ctx.arc(0, 0, 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#000';
+  ctx.beginPath();
+  ctx.arc(-2, -1, 2, 0, Math.PI * 2);
+  ctx.arc(2, -1, 2, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+/**
  * Отрисовать гекс
  */
 function drawHex(
   ctx: CanvasRenderingContext2D,
   cell: any,
-  useLowDetail: boolean = false
+  useLowDetail: boolean = false,
+  invasions: Array<{ enemyCountPerHex: Record<string, number> }> = []
 ) {
   const pos = hexToPixel(cell.coordinates, HEX_SIZE);
   const x = pos.x;
@@ -347,6 +370,10 @@ function drawHex(
   
   ctx.fill();
   
+  // Иконка инвайдеров — рисовать и при малом зуме (упрощённо), и при полной детализации
+  const hexKey = cell.key ?? `${cell.coordinates?.q ?? 0},${cell.coordinates?.r ?? 0}`;
+  const hasInvasion = invasions.some(inv => (inv.enemyCountPerHex[hexKey] ?? 0) > 0);
+
   // На малых зумах - упрощенный рендеринг
   if (useLowDetail) {
     // Без границ для обычных гексов (экономия)
@@ -354,6 +381,12 @@ function drawHex(
       // Только для станций - простая яркая точка
       ctx.fillStyle = '#00d4ff';
       ctx.fillRect(x - 2, y - 2, 4, 4);
+    }
+    if (hasInvasion) {
+      ctx.fillStyle = '#ff4444';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
     }
   } else {
     // Полная детализация на нормальных зумах
@@ -370,6 +403,10 @@ function drawHex(
     // Отрисовать станцию если есть
     if (cell.hasStation) {
       drawStation(ctx, x, y);
+    }
+
+    if (hasInvasion) {
+      drawInvasionIcon(ctx, x, y);
     }
   }
 }

@@ -97,8 +97,11 @@ export const CombatView: React.FC = () => {
 
       if (currentKeys.has('w') || currentKeys.has('ц')) thrust = 1;
       if (currentKeys.has('s') || currentKeys.has('ы')) thrust = -0.5;
-      if (currentKeys.has('a') || currentKeys.has('ф')) turn = -SHIP_TURN_RATE;
-      if (currentKeys.has('d') || currentKeys.has('в')) turn = SHIP_TURN_RATE;
+      // turnRate из combat ship (учитывает навыки) или константа по умолчанию
+      const playerShip = currentCombat?.ships?.find((s: CombatShip) => s.playerId === currentPlayer?.id);
+      const turnRate = playerShip?.turnRate ?? SHIP_TURN_RATE;
+      if (currentKeys.has('a') || currentKeys.has('ф')) turn = -turnRate;
+      if (currentKeys.has('d') || currentKeys.has('в')) turn = turnRate;
       if (currentKeys.has('shift')) boost = true; // Ускорение на Shift
       // Обработка стрейфа: Q/й - влево, E/у - вправо
       if (currentKeys.has('q') || currentKeys.has('й')) {
@@ -224,9 +227,15 @@ export const CombatView: React.FC = () => {
       {combatResult && currentPlayer && (
         <div className="combat-result-overlay">
           <div className="combat-result-panel">
-            <h2>{combatResult.winner === currentPlayer.id ? '🎉 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ'}</h2>
+            <h2>{(() => {
+              // #region agent log
+              fetch('http://127.0.0.1:7242/ingest/5e157f9f-2754-4b3d-af6e-0d3cf86ac9df',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({location:'CombatView.tsx:winner-check',message:'Invasion winner check',data:{winner:combatResult.winner,playerId:currentPlayer.id,combatType:combatResult.combat?.combatType,hypothesisId:'H1',timestamp:Date.now()}})}).catch(()=>{});
+              // #endregion
+              const isVictory = combatResult.winner === currentPlayer.id || combatResult.winner === 'players';
+              return isVictory ? '🎉 ПОБЕДА!' : '💀 ПОРАЖЕНИЕ';
+            })()}</h2>
             <p className="result-reason">
-              {combatResult.winner === currentPlayer.id 
+              {(combatResult.winner === currentPlayer.id || combatResult.winner === 'players')
                 ? 'Противник уничтожен!' 
                 : 'Ваш корабль уничтожен'}
             </p>
